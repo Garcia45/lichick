@@ -19,7 +19,8 @@ class LichickSeeder extends Seeder
                 'description' => 'Paduan makaroni lembut premium dengan potongan ayam crispy renyah di luar juicy di dalam, disiram saus keju spesial LiChick yang lumer dan gurih melimpah.',
                 'ingredients_badge' => 'Makaroni • Ayam Crispy • Saus Keju Lumer',
                 'price' => 18000,
-                'default_batch_quota' => 25,
+                'default_batch_quota' => 50,
+                'image_url' => 'images/mac-gemoy.jpg',
                 'is_active' => true,
             ]
         );
@@ -31,12 +32,12 @@ class LichickSeeder extends Seeder
                 'description' => 'Kentang goreng golden-crispy berpadu dengan potongan ayam crispy hangat, taburan bumbu rahasia LUCUIH FOOD, dan cocolan saus keju/pedas favorit.',
                 'ingredients_badge' => 'Kentang Goreng • Ayam Crispy • Bumbu Tabur • Saus',
                 'price' => 18000,
-                'default_batch_quota' => 25,
+                'default_batch_quota' => 50,
                 'is_active' => true,
             ]
         );
 
-        // 2. Seed Batch Harian (Batch Siang & Batch Sore) dengan masing-masing 25 Kuota
+        // 2. Seed Batch Harian (Batch Siang & Batch Sore) dengan masing-masing 50 Kuota
         $batches = [
             [
                 'batch_code' => 'BATCH-' . now()->format('Ymd') . '-01',
@@ -60,16 +61,15 @@ class LichickSeeder extends Seeder
                 $batchData
             );
 
-            // Set kuota 25 porsi Mac Gemoy & 25 porsi Fries Gemoy per batch
+            // Set kuota 50 porsi Mac Gemoy & 50 porsi Fries Gemoy per batch
             foreach ([$macGemoy, $friesGemoy] as $product) {
-                BatchProductQuota::firstOrCreate(
+                BatchProductQuota::updateOrCreate(
                     [
                         'batch_id' => $batch->id,
                         'product_id' => $product->id,
                     ],
                     [
-                        'initial_quota' => 25,
-                        'sold_qty' => 0,
+                        'initial_quota' => 50,
                     ]
                 );
             }

@@ -15,7 +15,7 @@ use Illuminate\View\View;
 class DashboardController extends Controller
 {
     /**
-     * Tampilkan Dashboard Admin: Rekap Harian, Kuota Batch (25 Mac & 25 Fries), dan Antrean Verifikasi
+     * Tampilkan Dashboard Admin: Rekap Harian, Kuota Batch (50 Mac & 50 Fries), dan Antrean Verifikasi
      */
     public function index(Request $request): View
     {
@@ -35,6 +35,13 @@ class DashboardController extends Controller
         $batches = Batch::with(['productQuotas.product'])
             ->whereDate('batch_date', $today)
             ->get();
+
+        if ($batches->isEmpty()) {
+            $batches = Batch::with(['productQuotas.product'])
+                ->orderBy('batch_date', 'desc')
+                ->orderBy('id')
+                ->get();
+        }
 
         $orders = Order::with(['batch', 'details'])
             ->whereDate('created_at', $today)

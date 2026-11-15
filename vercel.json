@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "outputDirectory": "dist",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/track", "destination": "/track/index.html" },
+    { "source": "/track/(.*)", "destination": "/track/index.html" },
+    { "source": "/admin/dashboard", "destination": "/admin/dashboard/index.html" },
+    { "source": "/", "destination": "/index.html" }
+  ]
+}

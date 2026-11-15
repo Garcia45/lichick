@@ -27,6 +27,13 @@ class PreOrderController extends Controller
             ->orderBy('id')
             ->get();
 
+        if ($batches->isEmpty()) {
+            $batches = Batch::with(['productQuotas.product'])
+                ->where('status', 'open')
+                ->orderBy('id')
+                ->get();
+        }
+
         $selectedBatchId = $request->query('batch_id', $batches->first()?->id);
         $activeBatch = $batches->firstWhere('id', (int) $selectedBatchId) ?? $batches->first();
 
@@ -36,7 +43,7 @@ class PreOrderController extends Controller
     }
 
     /**
-     * Simpan Pesanan Pre-Order dengan Pessimistic Locking (Mencegah Race Condition Kuota 25 Porsi)
+     * Simpan Pesanan Pre-Order dengan Pessimistic Locking (Mencegah Race Condition Kuota 50 Porsi)
      */
     public function checkout(Request $request): RedirectResponse
     {
@@ -51,7 +58,7 @@ class PreOrderController extends Controller
             'payment_proof'     => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'items'             => ['required', 'array', 'min:1'],
             'items.*.product_id'=> ['required', 'exists:products,id'],
-            'items.*.quantity'  => ['required', 'integer', 'min:0', 'max:25'],
+            'items.*.quantity'  => ['required', 'integer', 'min:0', 'max:50'],
             'items.*.item_notes'=> ['nullable', 'string', 'max:120'],
         ]);
 
