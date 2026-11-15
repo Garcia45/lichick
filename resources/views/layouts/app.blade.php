@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
     <title>@yield('title', 'LiChick by LUCUIH — Pre-Order Mac Gemoy & Fries Gemoy')</title>
 
-    <!-- Google Fonts: Space Grotesk (Editorial/Hype Display) & Plus Jakarta Sans (App Body) -->
+    <!-- Google Fonts: Poppins (Heading & Body) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400&display=swap" rel="stylesheet">
 
     <!-- Tailwind CSS CDN & Design System Tokens (Warm Street-Food / Hype Culinary) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,8 +17,8 @@
             theme: {
                 extend: {
                     fontFamily: {
-                        heading: ['"Space Grotesk"', 'sans-serif'],
-                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        heading: ['"Poppins"', 'sans-serif'],
+                        sans: ['"Poppins"', 'sans-serif'],
                     },
                     colors: {
                         brand: {
@@ -48,6 +48,7 @@
 
     <style>
         [x-cloak] { display: none !important; }
+        body, button, input, select, textarea { font-family: 'Poppins', sans-serif; }
         /* Custom scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #F8F6F0; }

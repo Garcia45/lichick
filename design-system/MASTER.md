@@ -19,8 +19,7 @@
   - **Low Quota Urgency (< 8 porsi)**: `#EF4444` (`red-500`) dengan `animate-pulse` halus
 
 ## 3. Typography Pairing
-- **Heading Font**: `Outfit` / `Fredoka` (Bold, Playful, Appetizing, Youthful)
-- **Body Font**: `Plus Jakarta Sans` (Clean, High Legibility di layar smartphone)
+- **Heading & Body Font**: `Poppins` (Clean, Modern Geometric, High Legibility di mobile & desktop)
 
 ## 4. Mobile-First & Micro-Interactions Rules
 - **Thumb-Friendly Zone**: Tombol CTA utama, pemilih kuota (+/-), dan Sticky Checkout Bar diletakkan di bagian bawah layar (`fixed bottom-0 z-50`) dengan minimum touch target `44px x 44px` (`min-h-[44px]`).
