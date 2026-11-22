@@ -1,6 +1,7 @@
-import { DEFAULT_QUOTAS } from "@/config/store";
+import { DEFAULT_QUOTAS, getBaseTypeForProductId, STORE_CONFIG } from "@/config/store";
 import type {
   AdminDashboardResponse,
+  MenuBaseType,
   MenuBreakdownItem,
   OrderItem,
   OrderRecord,
@@ -9,6 +10,16 @@ import type {
   PublicQuotaResponse,
   StoreQuotaConfig,
 } from "@/types/order";
+
+function normalizeBaseQuotas(raw: unknown): Record<MenuBaseType, number> {
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const macRaw = Number(obj.mac);
+  const friesRaw = Number(obj.fries);
+  return {
+    mac: Number.isFinite(macRaw) && macRaw >= 0 ? Math.floor(macRaw) : DEFAULT_QUOTAS.mac,
+    fries: Number.isFinite(friesRaw) && friesRaw >= 0 ? Math.floor(friesRaw) : DEFAULT_QUOTAS.fries,
+  };
+}
 
 function getWebhookUrl(): string {
   return (process.env.GOOGLE_SHEETS_WEBHOOK_URL || "").trim();
@@ -117,7 +128,7 @@ function normalizeOrderRecord(raw: OrderRecord): OrderRecord {
     timestamp: normalizeSheetDateTime(raw.timestamp, false),
     order_number: stripLeadingQuote(raw.order_number).toUpperCase(),
     order_date: normalizeSheetDateTime(raw.order_date, true),
-    pickup_day: stripLeadingQuote(raw.pickup_day) || "Senin",
+    pickup_day: stripLeadingQuote(raw.pickup_day) || STORE_CONFIG.pickupDays[0],
     pickup_slot: stripLeadingQuote(raw.pickup_slot) || "-",
     customer_name: stripLeadingQuote(raw.customer_name) || "-",
     customer_whatsapp: normalizePhoneDisplay(raw.customer_whatsapp),
@@ -270,6 +281,7 @@ function getDemoStore(): DemoStoreState {
 
 function computeAggregates(orders: OrderRecord[], today: string) {
   const soldToday: Record<string, number> = {};
+  const soldByBase: Record<MenuBaseType, number> = { mac: 0, fries: 0 };
   const menuMap: Record<string, MenuBreakdownItem> = {};
   const statusCounts: Record<OrderStatus, number> = {
     belum_dibuat: 0,
@@ -306,6 +318,9 @@ function computeAggregates(orders: OrderRecord[], today: string) {
       }
 
       for (const item of order.items) {
+        const base = getBaseTypeForProductId(item.product_id);
+        soldByBase[base] = (soldByBase[base] || 0) + item.quantity;
+
         if (!menuMap[item.name]) {
           menuMap[item.name] = { name: item.name, quantity: 0, revenue: 0 };
         }
@@ -327,6 +342,7 @@ function computeAggregates(orders: OrderRecord[], today: string) {
     },
     menu_breakdown: Object.values(menuMap),
     sold_today: soldToday,
+    sold_by_base: soldByBase,
   };
 }
 
@@ -342,25 +358,40 @@ export async function fetchPublicQuotas(): Promise<PublicQuotaResponse> {
       mode: "demo",
       today,
       sold_today: agg.sold_today,
-      store_config: store.storeConfig,
+      sold_by_base: agg.sold_by_base,
+      store_config: {
+        store_open: store.storeConfig.store_open,
+        quotas: normalizeBaseQuotas(store.storeConfig.quotas),
+      },
     };
   }
 
-  const url = `${webhook}${webhook.includes("?") ? "&" : "?"}action=public`;
+  // Ambil daftar pesanan aktif di sisi server agar stok total PO (15 Macmoy + 10 Friesmoy = 25)
+  // terakumulasi lintas hari dan tidak reset di tengah malam. Data pribadi pembeli TIDAK dikirim ke klien.
+  const secret = getApiSecret();
+  const url = `${webhook}${
+    webhook.includes("?") ? "&" : "?"
+  }action=admin${secret ? `&secret=${encodeURIComponent(secret)}` : ""}`;
   const res = await fetch(url, {
     method: "GET",
     redirect: "follow",
     cache: "no-store",
   });
   const data = await parseWebhookJson(res);
+  const normalizedOrders: OrderRecord[] = Array.isArray(data.orders)
+    ? data.orders.map((o: OrderRecord) => normalizeOrderRecord(o))
+    : [];
+  const agg = computeAggregates(normalizedOrders, data.today || today);
+
   return {
     ok: Boolean(data.ok),
     mode: "google_sheets",
     today: data.today || today,
-    sold_today: data.sold_today || {},
+    sold_today: agg.sold_today,
+    sold_by_base: agg.sold_by_base,
     store_config: {
       store_open: data.store_config?.store_open !== false,
-      quotas: { ...DEFAULT_QUOTAS, ...(data.store_config?.quotas || {}) },
+      quotas: normalizeBaseQuotas(data.store_config?.quotas),
     },
   };
 }
@@ -401,7 +432,7 @@ export async function createOrderRecord(input: {
     timestamp: now,
     order_number: input.order_number.toUpperCase(),
     order_date: today,
-    pickup_day: input.pickup_day || "Senin",
+    pickup_day: input.pickup_day || STORE_CONFIG.pickupDays[0],
     pickup_slot: input.pickup_slot || "-",
     customer_name: input.customer_name,
     customer_whatsapp: cleanPhone,
@@ -504,7 +535,11 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardResponse>
       summary: agg.summary,
       menu_breakdown: agg.menu_breakdown,
       sold_today: agg.sold_today,
-      store_config: store.storeConfig,
+      sold_by_base: agg.sold_by_base,
+      store_config: {
+        store_open: store.storeConfig.store_open,
+        quotas: normalizeBaseQuotas(store.storeConfig.quotas),
+      },
       orders: store.orders,
       sheet_url: sheetUrl || undefined,
     };
@@ -538,9 +573,10 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardResponse>
     summary: agg.summary,
     menu_breakdown: agg.menu_breakdown,
     sold_today: agg.sold_today,
+    sold_by_base: agg.sold_by_base,
     store_config: {
       store_open: data.store_config?.store_open !== false,
-      quotas: { ...DEFAULT_QUOTAS, ...(data.store_config?.quotas || {}) },
+      quotas: normalizeBaseQuotas(data.store_config?.quotas),
     },
     orders: normalizedOrders,
     sheet_url: sheetUrl || undefined,

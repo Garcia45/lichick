@@ -12,6 +12,8 @@ export type PaymentStatus =
 
 export type DeliveryMethod = "pickup" | "delivery";
 
+export type MenuBaseType = "mac" | "fries";
+
 export interface OrderItem {
   product_id: string;
   name: string;
@@ -87,6 +89,7 @@ export interface AdminDashboardResponse {
   summary: AdminSummary;
   menu_breakdown: MenuBreakdownItem[];
   sold_today: Record<string, number>;
+  sold_by_base: Record<MenuBaseType, number>;
   store_config: StoreQuotaConfig;
   orders: OrderRecord[];
   sheet_url?: string;
@@ -98,5 +101,6 @@ export interface PublicQuotaResponse {
   mode: "google_sheets" | "demo";
   today: string;
   sold_today: Record<string, number>;
+  sold_by_base: Record<MenuBaseType, number>;
   store_config: StoreQuotaConfig;
 }

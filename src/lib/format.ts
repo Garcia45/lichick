@@ -27,12 +27,24 @@ export function generateOrderNumber(): string {
   return `LCK-${yy}${mm}${dd}-${rand}`;
 }
 
+export function formatPickupSchedule(
+  pickupDay: string,
+  pickupSlot?: string
+): string {
+  const day = String(pickupDay || "").trim();
+  const slot = String(pickupSlot || "").trim();
+  if (slot && slot !== "-") {
+    return `${day}, ${slot}`;
+  }
+  return day || STORE_CONFIG.pickupDays[0];
+}
+
 export function buildWhatsAppOrderUrl(params: {
   orderNumber: string;
   customerName: string;
   customerWhatsapp: string;
   pickupDay: string;
-  pickupSlot: string;
+  pickupSlot?: string;
   deliveryMethod: "pickup" | "delivery";
   deliveryAddress: string;
   items: OrderItem[];
@@ -48,7 +60,7 @@ export function buildWhatsAppOrderUrl(params: {
     `*KODE PESANAN:* ${params.orderNumber}`,
     `*Nama:* ${params.customerName}`,
     `*No. WA:* ${params.customerWhatsapp}`,
-    `*Pengambilan:* ${params.pickupDay}, ${params.pickupSlot}`,
+    `*Pengambilan:* ${formatPickupSchedule(params.pickupDay, params.pickupSlot)}`,
     `*Metode:* ${
       params.deliveryMethod === "pickup"
         ? "Ambil di Kampus"

@@ -1,4 +1,4 @@
-import type { MenuProduct, OrderStatus } from "@/types/order";
+import type { MenuBaseType, MenuProduct, OrderStatus } from "@/types/order";
 
 export const STORE_CONFIG = {
   brandName: "LiChick",
@@ -22,21 +22,8 @@ export const STORE_CONFIG = {
     accountNumberRaw: "082190437013",
     accountHolder: "LiChick by Lucuih, Makanan",
   },
-  pickupDays: [
-    "Senin",
-    "Selasa",
-    "Rabu",
-    "Kamis",
-    "Jumat",
-    "Sabtu",
-  ],
-  pickupSlots: [
-    "10:00 - 11:00 WIB",
-    "11:00 - 12:00 WIB",
-    "12:00 - 13:00 WIB",
-    "14:00 - 15:00 WIB",
-    "16:00 - 17:00 WIB",
-  ],
+  pickupDays: ["Senin, 30 November"],
+  pickupSlots: [] as string[],
 };
 
 export const MENU_PRODUCTS: MenuProduct[] = [
@@ -51,7 +38,7 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     description:
       "Kentang goreng golden-crispy dipadu potongan ayam crispy renyah khas LiChick dengan siraman saus GERAH pedas-manis mengkilap.",
     price: 18000,
-    defaultQuota: 50,
+    defaultQuota: 10,
     badge: "Pedas Favorit",
     variants: ["Saus Gerah Normal", "Extra Saus Gerah", "Saus Gerah Dipisah"],
     imageUrl: "/images/friesmoy-gerah.png",
@@ -67,7 +54,7 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     description:
       "Makaroni creamy saus keju lumer berpadu potongan ayam crispy juicy dan siraman saus GERAH pedas menggoda.",
     price: 20000,
-    defaultQuota: 50,
+    defaultQuota: 15,
     badge: "Signature Pedas",
     variants: ["Saus Gerah Normal", "Extra Saus Gerah", "Saus Gerah Dipisah"],
     imageUrl: "/images/macmoy-gerah.png",
@@ -83,7 +70,7 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     description:
       "Kentang goreng renyah dengan tumpukan potongan ayam crispy hangat tanpa saus pedas. Gurih, renyah, dan cocok untuk semua selera.",
     price: 18000,
-    defaultQuota: 50,
+    defaultQuota: 10,
     badge: "Original Gurih",
     variants: ["Original Gurih", "Tambah Saus Sambal", "Tambah Mayo"],
     imageUrl: "/images/friesmoy-original.png",
@@ -99,19 +86,44 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     description:
       "Makaroni creamy dengan saus keju melimpah dan topping ayam crispy hangat tanpa rasa pedas.",
     price: 20000,
-    defaultQuota: 50,
+    defaultQuota: 15,
     badge: "Original Creamy",
     variants: ["Original Creamy Cheese", "Extra Keju", "Tambah Saus Sambal"],
     imageUrl: "/images/macmoy-original.png",
   },
 ];
 
-export const DEFAULT_QUOTAS: Record<string, number> = {
-  "friesmoy-gerah": 50,
-  "macmoy-gerah": 50,
-  "friesmoy-original": 50,
-  "macmoy-original": 50,
+// Stok bersama per jenis menu: 15 Macmoy + 10 Friesmoy = 25 porsi total
+export const DEFAULT_QUOTAS: Record<MenuBaseType, number> = {
+  mac: 15,
+  fries: 10,
 };
+
+export const BASE_STOCK_GROUPS: {
+  key: MenuBaseType;
+  label: string;
+  subtitle: string;
+  defaultQuota: number;
+}[] = [
+  {
+    key: "mac",
+    label: "Macmoy",
+    subtitle: "Stok gabungan Macmoy Gerah & Original",
+    defaultQuota: 15,
+  },
+  {
+    key: "fries",
+    label: "Friesmoy",
+    subtitle: "Stok gabungan Friesmoy Gerah & Original",
+    defaultQuota: 10,
+  },
+];
+
+export function getBaseTypeForProductId(productId: string): MenuBaseType {
+  const prod = MENU_PRODUCTS.find((p) => p.id === productId);
+  if (prod) return prod.baseType;
+  return productId.toLowerCase().includes("mac") ? "mac" : "fries";
+}
 
 export const ORDER_STATUS_META: Record<
   OrderStatus,
