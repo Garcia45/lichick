@@ -8,8 +8,8 @@ export const STORE_CONFIG = {
     "Potongan ayam crispy hangat khas LiChick dengan pilihan French Fries atau Mac & Cheese creamy, tersedia dalam versi Original gurih dan GERAH dengan saus Nashville pedas khas LUCUIH.",
   adminWhatsApp: process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || "6282190437013",
   adminWhatsAppDisplay: "0821-9043-7013",
-  instagramHandle: "@lichik.id",
-  instagramUrl: "https://instagram.com/lichik.id",
+  instagramHandle: "@lichikbylucuih.id",
+  instagramUrl: "https://instagram.com/lichikbylucuih.id",
   logoUrl: "/images/lichick-logo.png",
   posterUrl: "/images/poster-lichick.jpg",
   paymentInfo: {
