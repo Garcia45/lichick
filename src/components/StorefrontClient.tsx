@@ -479,22 +479,10 @@ export function StorefrontClient() {
               >
                 {/* Panel Foto Produk */}
                 <div className="md:col-span-4 lg:col-span-4 bg-lichick-poster p-4 sm:p-5 flex flex-col items-center justify-between gap-2">
-                  <div className="w-full flex items-center justify-between gap-2">
+                  <div className="w-full flex items-center justify-start">
                     <span className="price-splat font-display font-bold text-white text-sm px-3.5 py-1.5">
                       {product.priceShort}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setHighlightedProductId(product.id);
-                        document
-                          .getElementById("highlight-menu")
-                          ?.scrollIntoView({ behavior: "smooth" });
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-brand-dark text-white hover:bg-black text-[11px] font-bold cursor-pointer transition-colors"
-                    >
-                      Sorot di Atas
-                    </button>
                   </div>
 
                   <img
