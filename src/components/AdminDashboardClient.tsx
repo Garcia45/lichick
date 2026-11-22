@@ -652,6 +652,13 @@ export function AdminDashboardClient() {
                   <span>TOTAL ({printTarget.total_portions} porsi)</span>
                   <span>{formatRupiah(printTarget.total_amount)}</span>
                 </div>
+
+                <div className="text-center text-[10px] pt-2 border-t border-dashed border-black">
+                  <p>
+                    WA: {STORE_CONFIG.adminWhatsAppDisplay} | IG:{" "}
+                    {STORE_CONFIG.instagramHandle}
+                  </p>
+                </div>
               </div>
             )
           )}
