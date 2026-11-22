@@ -13,13 +13,17 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 import {
+  BASE_STOCK_GROUPS,
   DEFAULT_QUOTAS,
-  MENU_PRODUCTS,
   ORDER_STATUS_META,
   PAYMENT_STATUS_META,
   STORE_CONFIG,
 } from "@/config/store";
-import { buildCustomerNotifyWaUrl, formatRupiah } from "@/lib/format";
+import {
+  buildCustomerNotifyWaUrl,
+  formatPickupSchedule,
+  formatRupiah,
+} from "@/lib/format";
 import type {
   AdminDashboardResponse,
   OrderRecord,
@@ -249,8 +253,7 @@ export function AdminDashboardClient() {
     const orderRows = data.orders.map((o) => ({
       "Waktu Pesan": o.timestamp,
       "Kode Pesanan": o.order_number,
-      "Hari Pengambilan": o.pickup_day,
-      "Jam Pengambilan": o.pickup_slot,
+      "Hari Pengambilan": formatPickupSchedule(o.pickup_day, o.pickup_slot),
       "Nama Pelanggan": o.customer_name,
       "No WhatsApp": o.customer_whatsapp,
       Metode: o.delivery_method === "pickup" ? "Ambil di Kampus" : "Diantar",
@@ -462,7 +465,7 @@ export function AdminDashboardClient() {
                         <tr key={o.order_number} className="border-b border-black">
                           <td className="p-1.5 border-r border-black align-top">
                             <div className="font-mono font-bold">{o.order_number}</div>
-                            <div>{o.pickup_day}, {o.pickup_slot}</div>
+                            <div>{formatPickupSchedule(o.pickup_day, o.pickup_slot)}</div>
                           </td>
                           <td className="p-1.5 border-r border-black align-top">
                             <div className="font-bold">{o.customer_name}</div>
@@ -519,8 +522,11 @@ export function AdminDashboardClient() {
                   <p><strong>Nama:</strong> {printTarget.customer_name}</p>
                   <p><strong>WhatsApp:</strong> {printTarget.customer_whatsapp}</p>
                   <p>
-                    <strong>Pengambilan:</strong> {printTarget.pickup_day},{" "}
-                    {printTarget.pickup_slot}
+                    <strong>Pengambilan:</strong>{" "}
+                    {formatPickupSchedule(
+                      printTarget.pickup_day,
+                      printTarget.pickup_slot
+                    )}
                   </p>
                   <p>
                     <strong>Metode:</strong>{" "}
@@ -811,21 +817,25 @@ export function AdminDashboardClient() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {MENU_PRODUCTS.map((p) => {
-                const sold = data?.sold_today?.[p.id] || 0;
-                const maxVal = quotasDraft[p.id] ?? p.defaultQuota;
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {BASE_STOCK_GROUPS.map((group) => {
+                const sold = data?.sold_by_base?.[group.key] || 0;
+                const maxVal = quotasDraft[group.key] ?? group.defaultQuota;
+                const rem = Math.max(0, maxVal - sold);
                 return (
                   <div
-                    key={p.id}
+                    key={group.key}
                     className="p-3.5 rounded-xl bg-brand-paper border border-brand-border flex items-center justify-between gap-3"
                   >
                     <div className="text-xs">
                       <span className="font-bold text-brand-dark block">
-                        {p.name}
+                        Stok {group.label}
                       </span>
-                      <span className="text-[11px] text-brand-muted">
-                        Terjual: {sold}
+                      <span className="text-[11px] text-brand-muted block">
+                        {group.subtitle}
+                      </span>
+                      <span className="text-[11px] font-semibold text-brand-orange tabular-nums block mt-0.5">
+                        Terjual: {sold} | Sisa: {rem}
                       </span>
                     </div>
                     <input
@@ -836,17 +846,31 @@ export function AdminDashboardClient() {
                       onChange={(e) =>
                         setQuotasDraft((prev) => ({
                           ...prev,
-                          [p.id]: Math.max(
+                          [group.key]: Math.max(
                             0,
                             Math.min(500, Math.floor(Number(e.target.value) || 0))
                           ),
                         }))
                       }
-                      className="w-20 h-9 px-2 rounded-lg border border-brand-border bg-white text-center text-xs font-bold"
+                      className="w-20 h-9 px-2 rounded-lg border border-brand-border bg-white text-center text-xs font-bold shrink-0"
                     />
                   </div>
                 );
               })}
+
+              <div className="p-3.5 rounded-xl bg-brand-surface border border-brand-border flex flex-col justify-center text-xs">
+                <span className="text-[11px] font-bold uppercase text-brand-muted">
+                  Total Stok Pre Order
+                </span>
+                <span className="font-display font-bold text-xl text-brand-dark tabular-nums">
+                  {(quotasDraft.mac ?? DEFAULT_QUOTAS.mac) +
+                    (quotasDraft.fries ?? DEFAULT_QUOTAS.fries)}{" "}
+                  Porsi
+                </span>
+                <span className="text-[11px] text-brand-muted tabular-nums">
+                  Pengambilan: {STORE_CONFIG.pickupDays[0]}
+                </span>
+              </div>
             </div>
 
             <button
@@ -1030,7 +1054,7 @@ export function AdminDashboardClient() {
                         {order.order_number}
                       </Link>
                       <p className="text-[11px] font-semibold text-brand-orange">
-                        {order.pickup_day}, {order.pickup_slot}
+                        {formatPickupSchedule(order.pickup_day, order.pickup_slot)}
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1">
@@ -1215,7 +1239,7 @@ export function AdminDashboardClient() {
                           {order.order_number}
                         </Link>
                         <div className="text-[11px] font-semibold text-brand-orange">
-                          {order.pickup_day}, {order.pickup_slot}
+                          {formatPickupSchedule(order.pickup_day, order.pickup_slot)}
                         </div>
                         <div className="text-[10px] text-brand-muted">
                           {order.timestamp}

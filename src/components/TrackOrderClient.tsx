@@ -9,7 +9,7 @@ import {
   STORE_CONFIG,
   TIMELINE_STEPS,
 } from "@/config/store";
-import { formatRupiah, normalizeWaPhone } from "@/lib/format";
+import { formatPickupSchedule, formatRupiah, normalizeWaPhone } from "@/lib/format";
 import type { OrderRecord } from "@/types/order";
 
 export function TrackOrderClient() {
@@ -254,7 +254,7 @@ export function TrackOrderClient() {
             <div className="flex justify-between gap-4">
               <span className="text-brand-muted shrink-0">Pengambilan</span>
               <strong className="text-brand-orange text-right">
-                {order.pickup_day}, {order.pickup_slot}
+                {formatPickupSchedule(order.pickup_day, order.pickup_slot)}
               </strong>
             </div>
             <div className="flex justify-between gap-4">

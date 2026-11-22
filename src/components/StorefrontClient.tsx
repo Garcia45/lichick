@@ -11,6 +11,7 @@ import {
 } from "@/lib/format";
 import type {
   DeliveryMethod,
+  MenuBaseType,
   OrderItem,
   PublicQuotaResponse,
   StoreQuotaConfig,
@@ -30,7 +31,10 @@ export function StorefrontClient() {
     "ALL" | "GERAH" | "ORIGINAL"
   >("ALL");
 
-  const [soldToday, setSoldToday] = useState<Record<string, number>>({});
+  const [soldByBase, setSoldByBase] = useState<Record<MenuBaseType, number>>({
+    mac: 0,
+    fries: 0,
+  });
   const [storeConfig, setStoreConfig] = useState<StoreQuotaConfig>({
     store_open: true,
     quotas: { ...DEFAULT_QUOTAS },
@@ -52,8 +56,7 @@ export function StorefrontClient() {
   const [customerWhatsapp, setCustomerWhatsapp] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>("pickup");
   const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [pickupDay, setPickupDay] = useState(STORE_CONFIG.pickupDays[0]);
-  const [pickupSlot, setPickupSlot] = useState(STORE_CONFIG.pickupSlots[0]);
+  const [pickupDay] = useState(STORE_CONFIG.pickupDays[0]);
   const [paymentProofDataUrl, setPaymentProofDataUrl] = useState("");
   const [paymentProofName, setPaymentProofName] = useState("");
   const [compressingProof, setCompressingProof] = useState(false);
@@ -158,7 +161,12 @@ export function StorefrontClient() {
       .then((res) => res.json())
       .then((data: PublicQuotaResponse) => {
         if (data.ok) {
-          setSoldToday(data.sold_today || {});
+          if (data.sold_by_base) {
+            setSoldByBase({
+              mac: Number(data.sold_by_base.mac) || 0,
+              fries: Number(data.sold_by_base.fries) || 0,
+            });
+          }
           if (data.store_config) {
             setStoreConfig({
               store_open: data.store_config.store_open !== false,
@@ -172,12 +180,27 @@ export function StorefrontClient() {
       });
   }, []);
 
-  const getProductQuotaInfo = (productId: string, fallbackQuota: number) => {
-    const maxQuota = storeConfig.quotas[productId] ?? fallbackQuota;
-    const sold = soldToday[productId] ?? 0;
-    const remaining = Math.max(0, maxQuota - sold);
-    return { maxQuota, sold, remaining };
+  const cartByBase = useMemo(() => {
+    const totals: Record<MenuBaseType, number> = { mac: 0, fries: 0 };
+    MENU_PRODUCTS.forEach((p) => {
+      totals[p.baseType] += cart[p.id]?.qty || 0;
+    });
+    return totals;
+  }, [cart]);
+
+  const getBaseStockInfo = (baseType: MenuBaseType) => {
+    const maxQuota = storeConfig.quotas[baseType] ?? DEFAULT_QUOTAS[baseType];
+    const sold = soldByBase[baseType] ?? 0;
+    const remainingBeforeCart = Math.max(0, maxQuota - sold);
+    const inCart = cartByBase[baseType] ?? 0;
+    const availableLeft = Math.max(0, remainingBeforeCart - inCart);
+    return { maxQuota, sold, remainingBeforeCart, inCart, availableLeft };
   };
+
+  const macStock = getBaseStockInfo("mac");
+  const friesStock = getBaseStockInfo("fries");
+  const totalMaxStock = macStock.maxQuota + friesStock.maxQuota;
+  const totalAvailableStock = macStock.availableLeft + friesStock.availableLeft;
 
   const visibleProducts = useMemo(() => {
     if (editionFilter === "ALL") return MENU_PRODUCTS;
@@ -206,13 +229,15 @@ export function StorefrontClient() {
     const prod =
       MENU_PRODUCTS.find((p) => p.id === highlightedProductId) ||
       MENU_PRODUCTS[0];
-    const info = getProductQuotaInfo(prod.id, prod.defaultQuota);
-    const inCart = cart[prod.id]?.qty || 0;
+    const maxQuota =
+      storeConfig.quotas[prod.baseType] ?? DEFAULT_QUOTAS[prod.baseType];
+    const sold = soldByBase[prod.baseType] ?? 0;
+    const inCart = cartByBase[prod.baseType] ?? 0;
     return {
-      maxQuota: info.maxQuota,
-      remaining: Math.max(0, info.remaining - inCart),
+      maxQuota,
+      remaining: Math.max(0, maxQuota - sold - inCart),
     };
-  }, [cart, highlightedProductId, soldToday, storeConfig]);
+  }, [cartByBase, highlightedProductId, soldByBase, storeConfig]);
 
   const updateQty = (productId: string, delta: number) => {
     const product = MENU_PRODUCTS.find((p) => p.id === productId);
@@ -221,7 +246,10 @@ export function StorefrontClient() {
       showToast("Pre Order sedang ditutup sementara.");
       return;
     }
-    const { remaining } = getProductQuotaInfo(productId, product.defaultQuota);
+    const maxBase =
+      storeConfig.quotas[product.baseType] ?? DEFAULT_QUOTAS[product.baseType];
+    const soldBase = soldByBase[product.baseType] ?? 0;
+    const remainingBase = Math.max(0, maxBase - soldBase);
 
     setCart((prev) => {
       const cur = prev[productId] || {
@@ -229,8 +257,19 @@ export function StorefrontClient() {
         variant: product.variants[0] || "",
         notes: "",
       };
-      const nextQty = Math.max(0, Math.min(remaining, cur.qty + delta));
-      if (delta > 0 && nextQty > cur.qty) {
+      const otherSameBaseQty = MENU_PRODUCTS.filter(
+        (p) => p.baseType === product.baseType && p.id !== productId
+      ).reduce((sum, p) => sum + (prev[p.id]?.qty || 0), 0);
+      const maxForItem = Math.max(0, remainingBase - otherSameBaseQty);
+      const nextQty = Math.max(0, Math.min(maxForItem, cur.qty + delta));
+
+      if (delta > 0 && nextQty === cur.qty) {
+        showToast(
+          `Batas stok ${
+            product.baseType === "mac" ? "Macmoy" : "Friesmoy"
+          } (${maxBase} porsi) sudah penuh.`
+        );
+      } else if (delta > 0 && nextQty > cur.qty) {
         showToast(`${product.name} (+${nextQty - cur.qty}) masuk keranjang`);
       }
       return {
@@ -291,7 +330,7 @@ export function StorefrontClient() {
         body: JSON.stringify({
           order_number: orderNumber,
           pickup_day: pickupDay,
-          pickup_slot: pickupSlot,
+          pickup_slot: "-",
           customer_name: customerName.trim(),
           customer_whatsapp: customerWhatsapp.trim(),
           delivery_method: deliveryMethod,
@@ -310,10 +349,13 @@ export function StorefrontClient() {
         throw new Error(result.error || "Gagal menyimpan pesanan");
       }
 
-      setSoldToday((prev) => {
+      setSoldByBase((prev) => {
         const next = { ...prev };
         selectedItems.forEach((it) => {
-          next[it.product_id] = (next[it.product_id] || 0) + it.quantity;
+          const prod = MENU_PRODUCTS.find((p) => p.id === it.product_id);
+          if (prod) {
+            next[prod.baseType] = (next[prod.baseType] || 0) + it.quantity;
+          }
         });
         return next;
       });
@@ -329,7 +371,7 @@ export function StorefrontClient() {
         customerName: customerName.trim(),
         customerWhatsapp: customerWhatsapp.trim(),
         pickupDay,
-        pickupSlot,
+        pickupSlot: "-",
         deliveryMethod,
         deliveryAddress: deliveryAddress.trim(),
         items: selectedItems,
@@ -422,6 +464,33 @@ export function StorefrontClient() {
           </div>
         </div>
 
+        <div className="bg-white rounded-xl border border-brand-border px-4 py-3 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+          <div className="font-bold text-brand-dark">
+            Pengambilan:{" "}
+            <span className="text-brand-orange">{pickupDay}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-semibold text-brand-muted tabular-nums">
+            <span>
+              Total Stok PO:{" "}
+              <strong className="text-brand-dark">
+                Sisa {totalAvailableStock}/{totalMaxStock}
+              </strong>
+            </span>
+            <span>
+              Macmoy:{" "}
+              <strong className="text-brand-dark">
+                {macStock.availableLeft}/{macStock.maxQuota}
+              </strong>
+            </span>
+            <span>
+              Friesmoy:{" "}
+              <strong className="text-brand-dark">
+                {friesStock.availableLeft}/{friesStock.maxQuota}
+              </strong>
+            </span>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* KOLOM KIRI (8 KOLOM): DAFTAR MENU */}
           <div className="lg:col-span-8 divide-y divide-brand-border bg-white rounded-2xl border border-brand-border overflow-hidden">
@@ -431,11 +500,11 @@ export function StorefrontClient() {
                 variant: product.variants[0] || "",
                 notes: "",
               };
-              const { maxQuota, remaining } = getProductQuotaInfo(
-                product.id,
-                product.defaultQuota
+              const { maxQuota, availableLeft } = getBaseStockInfo(
+                product.baseType
               );
-              const availableLeft = Math.max(0, remaining - entry.qty);
+              const baseLabel =
+                product.baseType === "mac" ? "Macmoy" : "Friesmoy";
 
               return (
                 <article
@@ -472,8 +541,8 @@ export function StorefrontClient() {
                       <span>{product.badge}</span>
                       <span className="tabular-nums">
                         {availableLeft > 0
-                          ? `Sisa ${availableLeft}/${maxQuota}`
-                          : "Habis"}
+                          ? `Stok ${baseLabel} ${availableLeft}/${maxQuota}`
+                          : `Stok ${baseLabel} Habis`}
                       </span>
                     </div>
                   </div>
@@ -558,7 +627,7 @@ export function StorefrontClient() {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              disabled={!storeConfig.store_open || remaining < 2}
+                              disabled={!storeConfig.store_open || availableLeft < 2}
                               onClick={() => updateQty(product.id, 2)}
                               className="min-h-[42px] px-3 rounded-xl font-bold text-xs text-brand-orange bg-brand-surface hover:bg-orange-200 border border-brand-border disabled:opacity-40 cursor-pointer transition-colors"
                             >
@@ -566,13 +635,13 @@ export function StorefrontClient() {
                             </button>
                             <button
                               type="button"
-                              disabled={!storeConfig.store_open || remaining === 0}
+                              disabled={!storeConfig.store_open || availableLeft <= 0}
                               onClick={() => updateQty(product.id, 1)}
                               className="min-h-[42px] px-5 rounded-xl font-display font-bold text-sm text-white bg-brand-orange hover:bg-brand-orange-hover disabled:bg-zinc-300 cursor-pointer transition-colors"
                             >
                               {!storeConfig.store_open
                                 ? "Tutup"
-                                : remaining > 0
+                                : availableLeft > 0
                                 ? "+ Tambah"
                                 : "Habis"}
                             </button>
@@ -593,7 +662,7 @@ export function StorefrontClient() {
                             <button
                               type="button"
                               aria-label={`Tambah ${product.name}`}
-                              disabled={entry.qty >= remaining}
+                              disabled={availableLeft <= 0}
                               onClick={() => updateQty(product.id, 1)}
                               className="size-9 rounded-lg bg-brand-orange hover:bg-brand-orange-hover disabled:bg-zinc-300 text-white font-bold text-base cursor-pointer transition-colors"
                             >
@@ -658,9 +727,8 @@ export function StorefrontClient() {
                 <>
                   <div className="divide-y divide-brand-border max-h-[320px] overflow-y-auto pr-1">
                     {cartItems.map(({ product, entry, subtotal }) => {
-                      const { remaining } = getProductQuotaInfo(
-                        product.id,
-                        product.defaultQuota
+                      const { availableLeft } = getBaseStockInfo(
+                        product.baseType
                       );
                       return (
                         <div
@@ -703,7 +771,7 @@ export function StorefrontClient() {
                                 <button
                                   type="button"
                                   aria-label={`Tambah ${product.name} di keranjang`}
-                                  disabled={entry.qty >= remaining}
+                                  disabled={availableLeft <= 0}
                                   onClick={() => updateQty(product.id, 1)}
                                   className="size-7 rounded bg-brand-orange hover:bg-brand-orange-hover disabled:bg-zinc-300 text-white font-bold text-sm cursor-pointer"
                                 >
@@ -994,40 +1062,16 @@ export function StorefrontClient() {
                 </div>
               </div>
 
-              {/* Hari Pengambilan & Jam Pengambilan (Tanpa label Batch) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-brand-dark mb-1">
-                    Hari Pengambilan *
-                  </label>
-                  <select
-                    value={pickupDay}
-                    onChange={(e) => setPickupDay(e.target.value)}
-                    className="w-full h-11 px-3 rounded-lg border border-brand-border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
-                  >
-                    {STORE_CONFIG.pickupDays.map((day) => (
-                      <option key={day} value={day}>
-                        {day}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-brand-dark mb-1">
-                    Jam Pengambilan *
-                  </label>
-                  <select
-                    value={pickupSlot}
-                    onChange={(e) => setPickupSlot(e.target.value)}
-                    className="w-full h-11 px-3 rounded-lg border border-brand-border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-orange"
-                  >
-                    {STORE_CONFIG.pickupSlots.map((slot) => (
-                      <option key={slot} value={slot}>
-                        {slot}
-                      </option>
-                    ))}
-                  </select>
+              {/* Hari Pengambilan (Fixed: Senin, 30 November) */}
+              <div>
+                <span className="block text-xs font-bold text-brand-dark mb-1">
+                  Hari Pengambilan
+                </span>
+                <div className="w-full min-h-[44px] px-3.5 py-2.5 rounded-lg border border-brand-orange bg-brand-surface text-sm font-bold text-brand-deep flex items-center justify-between gap-2">
+                  <span>{pickupDay}</span>
+                  <span className="text-[11px] font-semibold text-brand-muted">
+                    Jadwal Resmi PO
+                  </span>
                 </div>
               </div>
 
