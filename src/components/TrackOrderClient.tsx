@@ -25,19 +25,18 @@ interface HorizontalStep {
 }
 
 const PROGRESS_STEPS: HorizontalStep[] = [
-  { key: "diajukan", label: "Diajukan", shortLabel: "Diajukan" },
-  { key: "verifikasi", label: "Verifikasi", shortLabel: "Verifikasi" },
-  { key: "dibuat", label: "Dibuat", shortLabel: "Dibuat" },
-  { key: "siap_diantar", label: "Siap / Antar", shortLabel: "Siap" },
+  { key: "verifikasi", label: "Verifikasi Pembayaran", shortLabel: "Verifikasi" },
+  { key: "dibuat", label: "Sedang Dibuat", shortLabel: "Dibuat" },
+  { key: "siap_diantar", label: "Siap / Diantar", shortLabel: "Siap / Antar" },
   { key: "selesai", label: "Selesai", shortLabel: "Selesai" },
 ];
 
 /**
- * Menghitung posisi stepper horizontal berdasarkan kombinasi status pembayaran & status dapur dari Admin:
- * - activeStep = 1 -> Diajukan (centang), Verifikasi (aktif/menunggu validasi admin)
- * - activeStep = 2 -> Diajukan & Verifikasi (centang), Dibuat (aktif)
- * - activeStep = 3 -> sampai Dibuat (centang), Siap / Antar (aktif)
- * - activeStep = 4 -> semua 5 tahap selesai (centang penuh)
+ * Menghitung posisi stepper horizontal 4 tahap dari validasi Admin:
+ * - activeStep = 0 -> Verifikasi Pembayaran (menunggu validasi admin)
+ * - activeStep = 1 -> Verifikasi selesai (centang), Sedang Dibuat (aktif)
+ * - activeStep = 2 -> sampai Dibuat selesai (centang), Siap / Diantar (aktif)
+ * - activeStep = 3 -> semua 4 tahap selesai (centang penuh)
  */
 function resolveStepperState(order: OrderRecord): {
   activeStep: number;
@@ -59,7 +58,7 @@ function resolveStepperState(order: OrderRecord): {
 
   if (order.payment_status === "ditolak") {
     return {
-      activeStep: 1,
+      activeStep: 0,
       allDone: false,
       pillLabel: "Bukti Ditolak",
       pillClass: "bg-red-100 text-red-800",
@@ -70,7 +69,7 @@ function resolveStepperState(order: OrderRecord): {
 
   if (order.order_status === "selesai") {
     return {
-      activeStep: 4,
+      activeStep: 3,
       allDone: true,
       pillLabel: "Pesanan Selesai",
       pillClass: "bg-emerald-100 text-emerald-900",
@@ -81,47 +80,47 @@ function resolveStepperState(order: OrderRecord): {
 
   if (order.order_status === "siap_diantar") {
     return {
-      activeStep: 3,
+      activeStep: 2,
       allDone: false,
       pillLabel:
         order.delivery_method === "pickup" ? "Siap Diambil" : "Sedang Diantar",
       pillClass: "bg-sky-100 text-sky-900",
       helperText:
         order.delivery_method === "pickup"
-          ? "Pesanan sudah dikemas hangat dan siap diambil di kampus."
-          : "Pesanan sudah dikemas rapi dan sedang dalam pengantaran.",
+          ? "Makanan sudah siap dan dikemas hangat untuk diambil di kampus."
+          : "Makanan sudah siap dan sedang dalam pengantaran.",
     };
   }
 
   if (order.order_status === "sedang_dibuat") {
     return {
-      activeStep: 2,
+      activeStep: 1,
       allDone: false,
       pillLabel: "Sedang Dibuat",
       pillClass: "bg-orange-100 text-orange-900",
       helperText:
-        "Pembayaran sudah terverifikasi. Pesananmu sedang dimasak hangat di dapur.",
+        "Pembayaran sudah terverifikasi. Makanan sedang dibuat hangat di dapur.",
     };
   }
 
   if (order.payment_status === "tervalidasi") {
     return {
-      activeStep: 2,
+      activeStep: 1,
       allDone: false,
       pillLabel: "Terverifikasi",
       pillClass: "bg-emerald-100 text-emerald-900",
       helperText:
-        "Pembayaran QRIS kamu sudah diverifikasi admin dan masuk antrean dapur.",
+        "Pembayaran QRIS kamu sudah diverifikasi admin dan segera masuk dapur.",
     };
   }
 
   return {
-    activeStep: 1,
+    activeStep: 0,
     allDone: false,
     pillLabel: "Menunggu Verifikasi",
     pillClass: "bg-amber-100 text-amber-900",
     helperText:
-      "Pesanan dan bukti QRIS sudah diterima. Menunggu verifikasi dari admin.",
+      "Bukti pembayaran QRIS sudah diterima. Menunggu verifikasi pembayaran dari admin.",
   };
 }
 
@@ -341,23 +340,23 @@ export function TrackOrderClient() {
           {order.order_status !== "dibatalkan" ? (
             <div className="pt-2 pb-1 space-y-3">
               <div className="relative">
-                {/* Garis Dasar Abu */}
-                <div className="absolute top-3.5 left-[10%] right-[10%] h-[3px] bg-brand-border rounded-full" />
+                {/* Garis Dasar Abu (4 tahap: pusat kolom 1 di 12.5% s.d. kolom 4 di 87.5%) */}
+                <div className="absolute top-3.5 left-[12.5%] right-[12.5%] h-[3px] bg-brand-border rounded-full" />
                 {/* Garis Progres Aktif Oranye */}
                 <div
-                  className="absolute top-3.5 left-[10%] h-[3px] bg-brand-orange rounded-full transition-all duration-500"
+                  className="absolute top-3.5 left-[12.5%] h-[3px] bg-brand-orange rounded-full transition-all duration-500"
                   style={{
-                    width: `${progressFillPercent * 0.8}%`,
+                    width: `${progressFillPercent * 0.75}%`,
                   }}
                 />
 
-                <ol className="relative grid grid-cols-5 gap-1">
+                <ol className="relative grid grid-cols-4 gap-1">
                   {PROGRESS_STEPS.map((step, idx) => {
                     const isDone = stepper.allDone || idx < stepper.activeStep;
                     const isCurrent =
                       !stepper.allDone && idx === stepper.activeStep;
                     const isRejectedStep =
-                      order.payment_status === "ditolak" && idx === 1;
+                      order.payment_status === "ditolak" && idx === 0;
 
                     return (
                       <li
