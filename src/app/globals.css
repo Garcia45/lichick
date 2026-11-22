@@ -50,8 +50,9 @@ body {
   background: linear-gradient(155deg, #f3840c 0%, #dc6603 55%, #b54800 100%);
 }
 
-/* Splat Cat Hitam ala Poster untuk Badge "GERAH" dan Harga "18K / 20K" */
-.gerah-splat {
+/* Splat Cat Hitam ala Poster untuk Badge "GERAH", "ORIGINAL", dan Harga "18K / 20K" */
+.gerah-splat,
+.original-splat {
   background: #0e0c0b;
   clip-path: polygon(
     4% 18%,

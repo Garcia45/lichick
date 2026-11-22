@@ -223,8 +223,8 @@ export function MenuHighlightStage({
               GERAH
             </span>
           ) : (
-            <span className="font-display font-bold text-xs sm:text-sm px-3.5 py-1.5 rounded-lg bg-white text-brand-dark uppercase tracking-wide">
-              Original
+            <span className="original-splat font-gerah text-brand-amber text-sm sm:text-base px-4 py-1 tracking-wider">
+              ORIGINAL
             </span>
           )}
           <span className="price-splat font-display font-bold text-white text-sm sm:text-base px-4 py-1.5">
