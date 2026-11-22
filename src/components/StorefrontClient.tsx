@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCartUi } from "@/components/CartUiContext";
 import { MenuHighlightStage } from "@/components/MenuHighlightStage";
 import {
@@ -16,6 +16,7 @@ import {
   formatRupiah,
   generateOrderNumber,
 } from "@/lib/format";
+import { sanitizeOrderForPublicTrack } from "@/lib/order-aggregates";
 import type {
   DeliveryMethod,
   OrderItem,
@@ -29,7 +30,11 @@ interface CartEntry {
   notes: string;
 }
 
-export function StorefrontClient() {
+interface StorefrontClientProps {
+  initialQuota?: PublicQuotaResponse | null;
+}
+
+export function StorefrontClient({ initialQuota = null }: StorefrontClientProps) {
   const router = useRouter();
   const { cartOpen, setCartOpen, syncCartSummary } = useCartUi();
 
@@ -40,11 +45,18 @@ export function StorefrontClient() {
     "ALL" | "GERAH" | "ORIGINAL"
   >("ALL");
 
-  const [totalSold, setTotalSold] = useState(0);
-  const [storeConfig, setStoreConfig] = useState<StoreQuotaConfig>({
-    store_open: true,
-    quotas: { ...DEFAULT_QUOTAS },
-  });
+  const [totalSold, setTotalSold] = useState(
+    initialQuota?.ok ? Number(initialQuota.total_sold) || 0 : 0
+  );
+  const [storeConfig, setStoreConfig] = useState<StoreQuotaConfig>(() => ({
+    store_open: initialQuota?.ok
+      ? initialQuota.store_config?.store_open !== false
+      : true,
+    quotas: {
+      ...DEFAULT_QUOTAS,
+      ...(initialQuota?.ok ? initialQuota.store_config?.quotas || {} : {}),
+    },
+  }));
 
   const [cart, setCart] = useState<Record<string, CartEntry>>(() => {
     const initial: Record<string, CartEntry> = {};
@@ -121,7 +133,7 @@ export function StorefrontClient() {
           const img = new Image();
           img.onerror = () => reject(new Error("Gambar tidak dapat diproses."));
           img.onload = () => {
-            const maxDim = 960;
+            const maxDim = 720;
             let w = img.width;
             let h = img.height;
             if (w > maxDim || h > maxDim) {
@@ -140,7 +152,7 @@ export function StorefrontClient() {
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(0, 0, w, h);
             ctx.drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL("image/jpeg", 0.78));
+            resolve(canvas.toDataURL("image/jpeg", 0.68));
           };
           img.src = String(reader.result);
         };
@@ -166,7 +178,7 @@ export function StorefrontClient() {
     }, 2600);
   };
 
-  useEffect(() => {
+  const syncQuota = useCallback(() => {
     fetch("/api/orders")
       .then((res) => res.json())
       .then((data: PublicQuotaResponse) => {
@@ -181,9 +193,31 @@ export function StorefrontClient() {
         }
       })
       .catch(() => {
-        // fallback ke kuota default
+        // fallback ke kuota saat ini
       });
   }, []);
+
+  useEffect(() => {
+    if (!initialQuota?.ok) {
+      syncQuota();
+    }
+  }, [initialQuota?.ok, syncQuota]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (!document.hidden) {
+        syncQuota();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [syncQuota]);
+
+  useEffect(() => {
+    if (drawerOpen) {
+      router.prefetch("/track");
+    }
+  }, [drawerOpen, router]);
 
   const visibleProducts = useMemo(() => {
     if (editionFilter === "ALL") return MENU_PRODUCTS;
@@ -346,6 +380,12 @@ export function StorefrontClient() {
 
       try {
         sessionStorage.setItem(`lichick_wa_url_${orderNumber}`, waUrl);
+        if (result.order) {
+          sessionStorage.setItem(
+            `lichick_order_snapshot_${orderNumber}`,
+            JSON.stringify(sanitizeOrderForPublicTrack(result.order))
+          );
+        }
       } catch {
         // Abaikan jika browser memblokir storage
       }

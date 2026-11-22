@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ORDER_STATUS_META,
   PAYMENT_STATUS_META,
@@ -17,6 +17,13 @@ import type { OrderRecord } from "@/types/order";
 
 const LAST_ORDER_STORAGE_KEY = "lichick_last_order_code";
 const LAST_WA_STORAGE_PREFIX = "lichick_wa_url_";
+const ORDER_SNAPSHOT_STORAGE_PREFIX = "lichick_order_snapshot_";
+
+interface TrackOrderClientProps {
+  initialTicket?: string;
+  initialOrder?: OrderRecord | null;
+  initialSearched?: boolean;
+}
 
 interface HorizontalStep {
   key: string;
@@ -124,23 +131,34 @@ function resolveStepperState(order: OrderRecord): {
   };
 }
 
-export function TrackOrderClient() {
+export function TrackOrderClient({
+  initialTicket: serverTicket = "",
+  initialOrder = null,
+  initialSearched = false,
+}: TrackOrderClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTicket = (searchParams.get("order_number") || "")
+  const urlTicket = (searchParams.get("order_number") || serverTicket || "")
     .trim()
     .toUpperCase();
   const justOrdered = searchParams.get("ordered") === "1";
 
-  const [query, setQuery] = useState(initialTicket);
+  const [query, setQuery] = useState(urlTicket);
   const [storedWaUrl, setStoredWaUrl] = useState("");
   const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [searched, setSearched] = useState(Boolean(initialSearched || initialOrder));
   const [errorMsg, setErrorMsg] = useState("");
-  const [order, setOrder] = useState<OrderRecord | null>(null);
+  const [order, setOrder] = useState<OrderRecord | null>(initialOrder);
   const [showDetails, setShowDetails] = useState(false);
-  const [showSearchBar, setShowSearchBar] = useState(!initialTicket);
+  const [showSearchBar, setShowSearchBar] = useState(
+    !(initialOrder || urlTicket)
+  );
   const [copied, setCopied] = useState(false);
+
+  // Catat kode yang sudah pernah di-hydrate dari SSR atau disubmit manual agar tidak double-fetch
+  const handledTicketRef = useRef<string>(
+    initialOrder || initialSearched ? serverTicket.trim().toUpperCase() : ""
+  );
 
   const fetchTicket = useCallback(
     async (ticket: string, opts?: { silent?: boolean }) => {
@@ -175,7 +193,9 @@ export function TrackOrderClient() {
           setErrorMsg("Koneksi bermasalah. Coba ulangi beberapa saat lagi.");
         }
       } finally {
-        setLoading(false);
+        if (!opts?.silent) {
+          setLoading(false);
+        }
       }
     },
     []
@@ -185,26 +205,48 @@ export function TrackOrderClient() {
   useEffect(() => {
     try {
       localStorage.removeItem(LAST_ORDER_STORAGE_KEY);
-      if (initialTicket) {
+      if (urlTicket) {
         const wa =
-          sessionStorage.getItem(`${LAST_WA_STORAGE_PREFIX}${initialTicket}`) ||
-          "";
+          sessionStorage.getItem(`${LAST_WA_STORAGE_PREFIX}${urlTicket}`) || "";
         if (wa) setStoredWaUrl(wa);
       }
     } catch {
       // Abaikan
     }
-  }, [initialTicket]);
+  }, [urlTicket]);
 
-  // Fetch otomatis ketika URL memiliki ?order_number=...
+  // Sinkronisasi ketika URL memiliki ?order_number=... (langsung pakai SSR/sessionStorage jika ada -> 0ms!)
   useEffect(() => {
-    if (initialTicket) {
-      setQuery(initialTicket);
-      fetchTicket(initialTicket);
-    }
-  }, [initialTicket, fetchTicket]);
+    if (!urlTicket) return;
+    setQuery(urlTicket);
 
-  // Auto-refresh status setiap 20 detik selama pesanan belum selesai / batal
+    if (handledTicketRef.current === urlTicket) {
+      return;
+    }
+    handledTicketRef.current = urlTicket;
+
+    try {
+      const rawSnap = sessionStorage.getItem(
+        `${ORDER_SNAPSHOT_STORAGE_PREFIX}${urlTicket}`
+      );
+      if (rawSnap) {
+        const parsed = JSON.parse(rawSnap) as OrderRecord;
+        if (parsed && parsed.order_number?.toUpperCase() === urlTicket) {
+          setOrder(parsed);
+          setSearched(true);
+          setShowSearchBar(false);
+          fetchTicket(urlTicket, { silent: true });
+          return;
+        }
+      }
+    } catch {
+      // Abaikan jika snapshot tidak valid
+    }
+
+    fetchTicket(urlTicket);
+  }, [urlTicket, fetchTicket]);
+
+  // Auto-refresh status diam-diam setiap 12 detik (hanya saat tab aktif) + langsung sync saat kembali ke tab
   useEffect(() => {
     if (
       !order ||
@@ -213,17 +255,33 @@ export function TrackOrderClient() {
     ) {
       return;
     }
+
+    const orderNo = order.order_number;
     const timer = setInterval(() => {
-      fetchTicket(order.order_number, { silent: true });
-    }, 20000);
-    return () => clearInterval(timer);
-  }, [order, fetchTicket]);
+      if (!document.hidden) {
+        fetchTicket(orderNo, { silent: true });
+      }
+    }, 12000);
+
+    const onVisibility = () => {
+      if (!document.hidden) {
+        fetchTicket(orderNo, { silent: true });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [order?.order_number, order?.order_status, fetchTicket]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const code = query.trim().toUpperCase();
     if (!code) return;
     setShowDetails(false);
+    handledTicketRef.current = code;
     router.replace(`/track?order_number=${encodeURIComponent(code)}`);
     fetchTicket(code);
   };

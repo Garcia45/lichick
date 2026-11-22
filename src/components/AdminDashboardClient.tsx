@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -24,6 +24,7 @@ import {
   formatPickupSchedule,
   formatRupiah,
 } from "@/lib/format";
+import { computeOrderAggregates } from "@/lib/order-aggregates";
 import type {
   AdminDashboardResponse,
   OrderRecord,
@@ -32,6 +33,27 @@ import type {
 } from "@/types/order";
 
 type FilterKey = "all" | "pending_payment" | OrderStatus;
+
+function applyOrdersToDashboard(
+  prev: AdminDashboardResponse,
+  nextOrders: OrderRecord[]
+): AdminDashboardResponse {
+  const agg = computeOrderAggregates(nextOrders, prev.today);
+  return {
+    ...prev,
+    orders: nextOrders,
+    summary: agg.summary,
+    menu_breakdown: agg.menu_breakdown,
+    sold_today: agg.sold_today,
+    sold_by_base: agg.sold_by_base,
+    total_sold: agg.total_sold,
+  };
+}
+
+interface AdminDashboardClientProps {
+  initialAuthenticated?: boolean;
+  initialData?: AdminDashboardResponse | null;
+}
 
 function extractDriveFileId(rawUrl: string): string | null {
   const s = String(rawUrl || "").trim();
@@ -62,29 +84,42 @@ const FILTER_TABS: { key: FilterKey; label: string }[] = [
   { key: "dibatalkan", label: "Dibatalkan" },
 ];
 
-export function AdminDashboardClient() {
-  const [authChecking, setAuthChecking] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+export function AdminDashboardClient({
+  initialAuthenticated,
+  initialData = null,
+}: AdminDashboardClientProps) {
+  const [authChecking, setAuthChecking] = useState(
+    initialAuthenticated === undefined
+  );
+  const [authenticated, setAuthenticated] = useState(
+    Boolean(initialAuthenticated)
+  );
   const [pinInput, setPinInput] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [authError, setAuthError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
 
-  const [data, setData] = useState<AdminDashboardResponse | null>(null);
+  const [data, setData] = useState<AdminDashboardResponse | null>(initialData);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [notice, setNotice] = useState("");
 
   const [statusFilter, setStatusFilter] = useState<FilterKey>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [updatingOrderNo, setUpdatingOrderNo] = useState<string | null>(null);
+  const [updatingOrders, setUpdatingOrders] = useState<Record<string, boolean>>(
+    {}
+  );
 
   const [showConfigPanel, setShowConfigPanel] = useState(false);
-  const [storeOpenDraft, setStoreOpenDraft] = useState(true);
-  const [quotasDraft, setQuotasDraft] = useState<Record<string, number>>({
+  const [storeOpenDraft, setStoreOpenDraft] = useState(
+    initialData?.store_config?.store_open !== false
+  );
+  const [quotasDraft, setQuotasDraft] = useState<Record<string, number>>(() => ({
     ...DEFAULT_QUOTAS,
-  });
+    ...(initialData?.store_config?.quotas || {}),
+  }));
   const [savingConfig, setSavingConfig] = useState(false);
+  const initialLoadedRef = useRef(Boolean(initialData));
 
   // Modal Preview & Validasi Bukti Pembayaran QRIS
   const [proofOrder, setProofOrder] = useState<OrderRecord | null>(null);
@@ -99,32 +134,48 @@ export function AdminDashboardClient() {
     setTimeout(() => setNotice((prev) => (prev === msg ? "" : prev)), 3200);
   };
 
-  const loadDashboard = useCallback(async () => {
-    setLoading(true);
-    setErrorMsg("");
-    try {
-      const res = await fetch("/api/admin/orders", { cache: "no-store" });
-      if (res.status === 401) {
-        setAuthenticated(false);
-        return;
+  const loadDashboard = useCallback(
+    async (opts?: { forceRefresh?: boolean; silent?: boolean }) => {
+      if (!opts?.silent) {
+        setLoading(true);
+        setErrorMsg("");
       }
-      const json: AdminDashboardResponse = await res.json();
-      if (!json.ok) {
-        throw new Error(json.error || "Gagal memuat data dashboard");
+      try {
+        const endpoint = opts?.forceRefresh
+          ? "/api/admin/orders?refresh=1"
+          : "/api/admin/orders";
+        const res = await fetch(endpoint, { cache: "no-store" });
+        if (res.status === 401) {
+          setAuthenticated(false);
+          return;
+        }
+        const json: AdminDashboardResponse = await res.json();
+        if (!json.ok) {
+          throw new Error(json.error || "Gagal memuat data dashboard");
+        }
+        setData(json);
+        setStoreOpenDraft(json.store_config?.store_open !== false);
+        setQuotasDraft({
+          ...DEFAULT_QUOTAS,
+          ...(json.store_config?.quotas || {}),
+        });
+      } catch (err) {
+        if (!opts?.silent) {
+          setErrorMsg(
+            err instanceof Error ? err.message : "Gagal memuat data pesanan."
+          );
+        }
+      } finally {
+        if (!opts?.silent) {
+          setLoading(false);
+        }
       }
-      setData(json);
-      setStoreOpenDraft(json.store_config?.store_open !== false);
-      setQuotasDraft({ ...DEFAULT_QUOTAS, ...(json.store_config?.quotas || {}) });
-    } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : "Gagal memuat data pesanan."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   useEffect(() => {
+    if (initialAuthenticated !== undefined) return;
     fetch("/api/admin/auth")
       .then((res) => res.json())
       .then((json) => {
@@ -132,24 +183,39 @@ export function AdminDashboardClient() {
       })
       .catch(() => setAuthenticated(false))
       .finally(() => setAuthChecking(false));
-  }, []);
+  }, [initialAuthenticated]);
 
   useEffect(() => {
-    if (authenticated) {
-      loadDashboard();
+    if (!authenticated) return;
+    if (initialLoadedRef.current) {
+      initialLoadedRef.current = false;
+      return;
     }
+    loadDashboard();
+  }, [authenticated, loadDashboard]);
+
+  // Sinkronisasi diam-diam saat admin kembali membuka tab portal agar pesanan baru langsung muncul
+  useEffect(() => {
+    if (!authenticated) return;
+    const onVisibility = () => {
+      if (!document.hidden) {
+        loadDashboard({ silent: true });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [authenticated, loadDashboard]);
 
   useEffect(() => {
     if (!proofOrder) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !updatingOrderNo) {
+      if (e.key === "Escape" && !updatingOrders[proofOrder.order_number]) {
         setProofOrder(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [proofOrder, updatingOrderNo]);
+  }, [proofOrder, updatingOrders]);
 
   const triggerPrint = (target: OrderRecord | "summary") => {
     setPrintTarget(target);
@@ -194,13 +260,34 @@ export function AdminDashboardClient() {
     paymentStatus?: PaymentStatus;
     successMessage: string;
   }) => {
-    setUpdatingOrderNo(params.orderNumber);
+    const code = params.orderNumber;
+    setErrorMsg("");
+
+    // Optimistic UI: langsung ubah tampilan, badge, & metrik ringkasan dalam 0ms
+    setData((prev) => {
+      if (!prev) return prev;
+      const nextOrders = prev.orders.map((o) => {
+        if (o.order_number !== code) return o;
+        return {
+          ...o,
+          order_status: params.orderStatus ?? o.order_status,
+          payment_status: params.paymentStatus ?? o.payment_status,
+        };
+      });
+      return applyOrdersToDashboard(prev, nextOrders);
+    });
+    if (proofOrder?.order_number === code) {
+      setProofOrder(null);
+    }
+    showNotice(params.successMessage);
+
+    setUpdatingOrders((prev) => ({ ...prev, [code]: true }));
     try {
       const res = await fetch("/api/admin/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          order_number: params.orderNumber,
+          order_number: code,
           order_status: params.orderStatus,
           payment_status: params.paymentStatus,
         }),
@@ -209,21 +296,42 @@ export function AdminDashboardClient() {
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "Gagal memperbarui pesanan");
       }
-      showNotice(params.successMessage);
-      if (proofOrder?.order_number === params.orderNumber) {
-        setProofOrder(null);
+      if (json.order) {
+        setData((prev) => {
+          if (!prev) return prev;
+          const nextOrders = prev.orders.map((o) =>
+            o.order_number === code ? json.order : o
+          );
+          return applyOrdersToDashboard(prev, nextOrders);
+        });
       }
-      await loadDashboard();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Gagal update pesanan");
+      await loadDashboard({ forceRefresh: true, silent: true });
     } finally {
-      setUpdatingOrderNo(null);
+      setUpdatingOrders((prev) => {
+        const next = { ...prev };
+        delete next[code];
+        return next;
+      });
     }
   };
 
   const handleDeleteOrder = async (orderNumber: string) => {
     if (!confirm(`Hapus pesanan ${orderNumber} secara permanen?`)) return;
-    setUpdatingOrderNo(orderNumber);
+    setErrorMsg("");
+
+    // Optimistic UI: hapus langsung dari daftar & perbarui ringkasan tanpa tunggu roundtrip
+    setData((prev) => {
+      if (!prev) return prev;
+      const nextOrders = prev.orders.filter(
+        (o) => o.order_number !== orderNumber
+      );
+      return applyOrdersToDashboard(prev, nextOrders);
+    });
+    showNotice(`Pesanan ${orderNumber} dihapus.`);
+
+    setUpdatingOrders((prev) => ({ ...prev, [orderNumber]: true }));
     try {
       const res = await fetch(
         `/api/admin/orders?order_number=${encodeURIComponent(orderNumber)}`,
@@ -233,17 +341,35 @@ export function AdminDashboardClient() {
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "Gagal menghapus pesanan");
       }
-      showNotice(`Pesanan ${orderNumber} dihapus.`);
-      await loadDashboard();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Gagal menghapus");
+      await loadDashboard({ forceRefresh: true, silent: true });
     } finally {
-      setUpdatingOrderNo(null);
+      setUpdatingOrders((prev) => {
+        const next = { ...prev };
+        delete next[orderNumber];
+        return next;
+      });
     }
   };
 
   const handleSaveStoreConfig = async () => {
+    setErrorMsg("");
     setSavingConfig(true);
+
+    // Optimistic UI: langsung terapkan status toko & kuota baru
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        store_config: {
+          store_open: storeOpenDraft,
+          quotas: { ...quotasDraft },
+        },
+      };
+    });
+    showNotice("Status toko dan kuota menu berhasil disimpan.");
+
     try {
       const res = await fetch("/api/admin/batches", {
         method: "PATCH",
@@ -257,10 +383,9 @@ export function AdminDashboardClient() {
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "Gagal menyimpan pengaturan toko");
       }
-      showNotice("Status toko dan kuota menu berhasil disimpan.");
-      await loadDashboard();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Gagal simpan pengaturan");
+      await loadDashboard({ forceRefresh: true, silent: true });
     } finally {
       setSavingConfig(false);
     }
@@ -689,7 +814,7 @@ export function AdminDashboardClient() {
         <div
           className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 no-print"
           onClick={() => {
-            if (!updatingOrderNo) setProofOrder(null);
+            if (!updatingOrders[proofOrder.order_number]) setProofOrder(null);
           }}
         >
           <div
@@ -757,7 +882,7 @@ export function AdminDashboardClient() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
-                  disabled={updatingOrderNo === proofOrder.order_number}
+                  disabled={Boolean(updatingOrders[proofOrder.order_number])}
                   onClick={() =>
                     handleUpdateOrder({
                       orderNumber: proofOrder.order_number,
@@ -776,7 +901,7 @@ export function AdminDashboardClient() {
 
                 <button
                   type="button"
-                  disabled={updatingOrderNo === proofOrder.order_number}
+                  disabled={Boolean(updatingOrders[proofOrder.order_number])}
                   onClick={() =>
                     handleUpdateOrder({
                       orderNumber: proofOrder.order_number,
@@ -791,7 +916,7 @@ export function AdminDashboardClient() {
 
                 <button
                   type="button"
-                  disabled={updatingOrderNo === proofOrder.order_number}
+                  disabled={Boolean(updatingOrders[proofOrder.order_number])}
                   onClick={() =>
                     handleUpdateOrder({
                       orderNumber: proofOrder.order_number,
@@ -830,11 +955,11 @@ export function AdminDashboardClient() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={loadDashboard}
+              onClick={() => loadDashboard({ forceRefresh: true })}
               disabled={loading}
               className="min-h-[40px] px-3.5 rounded-lg bg-brand-paper border border-brand-border hover:border-brand-orange text-xs font-bold cursor-pointer transition-colors"
             >
-              {loading ? "Memuat..." : "Refresh"}
+              {loading ? "Menyegarkan..." : "Refresh"}
             </button>
 
             <button
@@ -1135,7 +1260,7 @@ export function AdminDashboardClient() {
               const payMeta =
                 PAYMENT_STATUS_META[order.payment_status] ||
                 PAYMENT_STATUS_META.menunggu_validasi;
-              const isBusy = updatingOrderNo === order.order_number;
+              const isBusy = Boolean(updatingOrders[order.order_number]);
               const waNotifyUrl = buildCustomerNotifyWaUrl(
                 order,
                 meta.waTemplate(order.customer_name, order.order_number)
@@ -1318,7 +1443,7 @@ export function AdminDashboardClient() {
                   const payMeta =
                     PAYMENT_STATUS_META[order.payment_status] ||
                     PAYMENT_STATUS_META.menunggu_validasi;
-                  const isBusy = updatingOrderNo === order.order_number;
+                  const isBusy = Boolean(updatingOrders[order.order_number]);
                   const waNotifyUrl = buildCustomerNotifyWaUrl(
                     order,
                     meta.waTemplate(order.customer_name, order.order_number)
