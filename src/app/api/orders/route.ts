@@ -1,0 +1,176 @@
+import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_QUOTAS, MENU_PRODUCTS } from "@/config/store";
+import { createOrderRecord, fetchPublicQuotas } from "@/lib/sheets-client";
+import { generateOrderNumber } from "@/lib/format";
+import type { OrderItem } from "@/types/order";
+
+const PRODUCT_BY_ID = new Map(MENU_PRODUCTS.map((p) => [p.id, p]));
+const PROOF_DATA_URL_REGEX = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/i;
+
+export async function GET() {
+  try {
+    const data = await fetchPublicQuotas();
+    return NextResponse.json(data);
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : "Gagal memuat kuota" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+
+    const customerName = String(body.customer_name || "").trim();
+    const customerWhatsapp = String(body.customer_whatsapp || "").trim();
+    const waDigits = customerWhatsapp.replace(/[^0-9]/g, "");
+    const deliveryMethod = body.delivery_method === "delivery" ? "delivery" : "pickup";
+    const deliveryAddress = String(body.delivery_address || "").trim();
+    const pickupDay = String(body.pickup_day || "Senin").trim();
+    const pickupSlot = String(body.pickup_slot || "-").trim();
+    const paymentProofBase64 = String(body.payment_proof_base64 || "").trim();
+    const rawItems: OrderItem[] = Array.isArray(body.items) ? body.items : [];
+
+    if (!customerName || !customerWhatsapp) {
+      return NextResponse.json(
+        { ok: false, error: "Nama lengkap dan nomor WhatsApp wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    if (waDigits.length < 9 || waDigits.length > 15) {
+      return NextResponse.json(
+        { ok: false, error: "Nomor WhatsApp tidak valid. Masukkan minimal 9 digit angka." },
+        { status: 400 }
+      );
+    }
+
+    if (deliveryMethod === "delivery" && !deliveryAddress) {
+      return NextResponse.json(
+        { ok: false, error: "Alamat pengiriman atau titik temu wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    if (!paymentProofBase64) {
+      return NextResponse.json(
+        { ok: false, error: "Mohon upload bukti pembayaran QRIS terlebih dahulu." },
+        { status: 400 }
+      );
+    }
+
+    if (!PROOF_DATA_URL_REGEX.test(paymentProofBase64)) {
+      return NextResponse.json(
+        { ok: false, error: "Format bukti pembayaran harus berupa gambar JPG, PNG, atau WebP." },
+        { status: 400 }
+      );
+    }
+
+    if (paymentProofBase64.length > 2_500_000) {
+      return NextResponse.json(
+        { ok: false, error: "Ukuran gambar bukti pembayaran terlalu besar." },
+        { status: 400 }
+      );
+    }
+
+    // Validasi harga dan nama produk langsung dari katalog resmi server (anti manipulasi harga)
+    const validItems: OrderItem[] = [];
+    for (const it of rawItems) {
+      const qty = Math.floor(Number(it.quantity));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const catalogProduct = PRODUCT_BY_ID.get(String(it.product_id || "").trim());
+      if (!catalogProduct) {
+        return NextResponse.json(
+          { ok: false, error: "Menu yang dipilih tidak dikenali." },
+          { status: 400 }
+        );
+      }
+      const safeQty = Math.min(qty, 100);
+      validItems.push({
+        product_id: catalogProduct.id,
+        name: catalogProduct.name,
+        variant: String(it.variant || catalogProduct.variants[0] || "").trim().slice(0, 80),
+        quantity: safeQty,
+        unit_price: catalogProduct.price,
+        subtotal: safeQty * catalogProduct.price,
+        notes: it.notes ? String(it.notes).trim().slice(0, 140) : undefined,
+      });
+    }
+
+    if (validItems.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Minimal pilih 1 menu terlebih dahulu." },
+        { status: 400 }
+      );
+    }
+
+    // Cek status buka/tutup PO dan sisa kuota live di server sebelum mencatat pesanan
+    try {
+      const quotaSnap = await fetchPublicQuotas();
+      if (quotaSnap.ok && quotaSnap.store_config?.store_open === false) {
+        return NextResponse.json(
+          { ok: false, error: "Pre Order saat ini sedang ditutup sementara oleh admin." },
+          { status: 403 }
+        );
+      }
+      if (quotaSnap.ok) {
+        for (const item of validItems) {
+          const maxQuota =
+            quotaSnap.store_config?.quotas?.[item.product_id] ??
+            DEFAULT_QUOTAS[item.product_id] ??
+            50;
+          const sold = quotaSnap.sold_today?.[item.product_id] ?? 0;
+          const remaining = Math.max(0, maxQuota - sold);
+          if (item.quantity > remaining) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error:
+                  remaining === 0
+                    ? `Kuota ${item.name} hari ini sudah habis.`
+                    : `Kuota ${item.name} hanya tersisa ${remaining} porsi.`,
+              },
+              { status: 409 }
+            );
+          }
+        }
+      }
+    } catch {
+      // Lanjut jika pengecekan kuota sementara gagal agar transaksi tidak terputus
+    }
+
+    const totalPortions = validItems.reduce((sum, it) => sum + it.quantity, 0);
+    const totalAmount = validItems.reduce((sum, it) => sum + it.subtotal, 0);
+    const orderNumber = String(body.order_number || generateOrderNumber())
+      .trim()
+      .toUpperCase();
+
+    const result = await createOrderRecord({
+      order_number: orderNumber,
+      pickup_day: pickupDay,
+      pickup_slot: pickupSlot,
+      customer_name: customerName.slice(0, 80),
+      customer_whatsapp: customerWhatsapp.slice(0, 24),
+      delivery_method: deliveryMethod,
+      delivery_address: deliveryAddress.slice(0, 200),
+      items: validItems,
+      total_portions: totalPortions,
+      total_amount: totalAmount,
+      payment_proof_base64: paymentProofBase64,
+      notes: String(body.notes || "").trim().slice(0, 300) || "-",
+    });
+
+    if (!result.ok) {
+      return NextResponse.json(result, { status: 502 });
+    }
+
+    return NextResponse.json(result, { status: 201 });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : "Gagal memproses pesanan" },
+      { status: 500 }
+    );
+  }
+}
