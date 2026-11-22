@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import * as XLSX from "xlsx";
+import writeXlsxFile, { type Row } from "write-excel-file/browser";
 import {
   DEFAULT_QUOTAS,
   DEFAULT_TOTAL_QUOTA,
@@ -247,57 +247,127 @@ export function AdminDashboardClient() {
     }
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!data) return;
 
-    const orderRows = data.orders.map((o) => ({
-      "Waktu Pesan": o.timestamp,
-      "Kode Pesanan": o.order_number,
-      "Hari Pengambilan": formatPickupSchedule(o.pickup_day, o.pickup_slot),
-      "Nama Pelanggan": o.customer_name,
-      "No WhatsApp": o.customer_whatsapp,
-      Metode: o.delivery_method === "pickup" ? "Ambil di Kampus" : "Diantar",
-      Alamat: o.delivery_address,
-      "Rincian Pesanan": o.items_summary,
-      "Total Porsi": o.total_portions,
-      "Total Bayar (Rp)": o.total_amount,
-      "Status Pembayaran":
-        PAYMENT_STATUS_META[o.payment_status || "menunggu_validasi"]?.label ||
-        o.payment_status,
-      "Status Dapur":
-        ORDER_STATUS_META[o.order_status]?.shortLabel || o.order_status,
-      "Link Bukti Pembayaran":
-        o.payment_proof_url && o.payment_proof_url.startsWith("http")
+    const headerStyle = {
+      fontWeight: "bold" as const,
+      backgroundColor: "#EA6C04",
+      color: "#FFFFFF",
+    };
+
+    const orderHeader: Row = [
+      "Waktu Pesan",
+      "Kode Pesanan",
+      "Hari Pengambilan",
+      "Nama Pelanggan",
+      "No WhatsApp",
+      "Metode",
+      "Alamat",
+      "Rincian Pesanan",
+      "Total Porsi",
+      "Total Bayar (Rp)",
+      "Status Pembayaran",
+      "Status Dapur",
+      "Link Bukti Pembayaran",
+      "Catatan Pesanan",
+      "Terakhir Update",
+    ].map((value) => ({ value, ...headerStyle }));
+
+    const orderDataRows: Row[] = data.orders.map((o) => {
+      const payLabel =
+        (PAYMENT_STATUS_META[o.payment_status] ||
+          PAYMENT_STATUS_META.menunggu_validasi).label;
+      const statusLabel =
+        (ORDER_STATUS_META[o.order_status] || ORDER_STATUS_META.belum_dibuat)
+          .shortLabel;
+      const safeProof =
+        o.payment_proof_url && /^https?:\/\//i.test(o.payment_proof_url)
           ? o.payment_proof_url
           : o.payment_proof_url
           ? "Tersimpan di preview lokal"
-          : "-",
-      "Catatan Pesanan": o.notes,
-      "Terakhir Update": o.updated_at,
-    }));
+          : "-";
 
-    const summaryRows = [
-      { Metrik: "Tanggal Rekap", Nilai: data.today },
-      { Metrik: "Total Pesanan Masuk", Nilai: data.summary.total_orders },
-      { Metrik: "Pesanan Aktif (Tidak Batal)", Nilai: data.summary.active_orders },
-      { Metrik: "Total Porsi Terjual", Nilai: data.summary.total_portions_sold },
-      { Metrik: "Gross Pipeline (Rp)", Nilai: data.summary.gross_revenue },
-      { Metrik: "Omset Tervalidasi (Lunas) (Rp)", Nilai: data.summary.verified_revenue },
-      { Metrik: "Menunggu Validasi Bayar", Nilai: data.summary.pending_payments },
-      { Metrik: "Belum Dibuat", Nilai: data.summary.status_counts.belum_dibuat || 0 },
-      { Metrik: "Sedang Dibuat", Nilai: data.summary.status_counts.sedang_dibuat || 0 },
-      { Metrik: "Siap / Diantar", Nilai: data.summary.status_counts.siap_diantar || 0 },
-      { Metrik: "Sudah Selesai", Nilai: data.summary.status_counts.selesai || 0 },
-      { Metrik: "Dibatalkan", Nilai: data.summary.status_counts.dibatalkan || 0 },
+      return [
+        { type: String, value: o.timestamp || "-" },
+        { type: String, value: o.order_number },
+        {
+          type: String,
+          value: formatPickupSchedule(o.pickup_day, o.pickup_slot),
+        },
+        { type: String, value: o.customer_name },
+        { type: String, value: o.customer_whatsapp },
+        {
+          type: String,
+          value: o.delivery_method === "pickup" ? "Ambil di Kampus" : "Diantar",
+        },
+        { type: String, value: o.delivery_address || "-" },
+        { type: String, value: o.items_summary || "-" },
+        { type: Number, value: Number(o.total_portions) || 0 },
+        { type: Number, value: Number(o.total_amount) || 0 },
+        { type: String, value: payLabel },
+        { type: String, value: statusLabel },
+        { type: String, value: safeProof },
+        { type: String, value: o.notes || "-" },
+        { type: String, value: o.updated_at || "-" },
+      ];
+    });
+
+    const summaryHeader: Row = [
+      { value: "Metrik", ...headerStyle },
+      { value: "Nilai", ...headerStyle },
     ];
 
-    const wb = XLSX.utils.book_new();
-    const wsOrders = XLSX.utils.json_to_sheet(orderRows);
-    const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
-    XLSX.utils.book_append_sheet(wb, wsOrders, "Daftar Pesanan");
-    XLSX.utils.book_append_sheet(wb, wsSummary, "Ringkasan Penjualan");
-    XLSX.writeFile(wb, `Rekap-Penjualan-LiChick-${data.today}.xlsx`);
-    showNotice("File Excel (.xlsx) berhasil diunduh.");
+    const summaryDataRows: Row[] = [
+      [{ type: String, value: "Tanggal Rekap" }, { type: String, value: data.today }],
+      [{ type: String, value: "Total Pesanan Masuk" }, { type: Number, value: data.summary.total_orders }],
+      [{ type: String, value: "Pesanan Aktif (Tidak Batal)" }, { type: Number, value: data.summary.active_orders }],
+      [{ type: String, value: "Total Porsi Terjual" }, { type: Number, value: data.summary.total_portions_sold }],
+      [{ type: String, value: "Total Macmoy Terjual" }, { type: Number, value: data.sold_by_base?.mac || 0 }],
+      [{ type: String, value: "Total Friesmoy Terjual" }, { type: Number, value: data.sold_by_base?.fries || 0 }],
+      [{ type: String, value: "Gross Pipeline (Rp)" }, { type: Number, value: data.summary.gross_revenue }],
+      [{ type: String, value: "Omset Tervalidasi (Lunas) (Rp)" }, { type: Number, value: data.summary.verified_revenue }],
+      [{ type: String, value: "Menunggu Validasi Bayar" }, { type: Number, value: data.summary.pending_payments }],
+      [{ type: String, value: "Belum Dibuat" }, { type: Number, value: data.summary.status_counts.belum_dibuat || 0 }],
+      [{ type: String, value: "Sedang Dibuat" }, { type: Number, value: data.summary.status_counts.sedang_dibuat || 0 }],
+      [{ type: String, value: "Siap / Diantar" }, { type: Number, value: data.summary.status_counts.siap_diantar || 0 }],
+      [{ type: String, value: "Sudah Selesai" }, { type: Number, value: data.summary.status_counts.selesai || 0 }],
+      [{ type: String, value: "Dibatalkan" }, { type: Number, value: data.summary.status_counts.dibatalkan || 0 }],
+    ];
+
+    try {
+      await writeXlsxFile([
+        {
+          sheet: "Daftar Pesanan",
+          data: [orderHeader, ...orderDataRows],
+          columns: [
+            { width: 20 },
+            { width: 20 },
+            { width: 22 },
+            { width: 20 },
+            { width: 16 },
+            { width: 16 },
+            { width: 24 },
+            { width: 38 },
+            { width: 12 },
+            { width: 16 },
+            { width: 26 },
+            { width: 16 },
+            { width: 38 },
+            { width: 24 },
+            { width: 20 },
+          ],
+        },
+        {
+          sheet: "Ringkasan Penjualan",
+          data: [summaryHeader, ...summaryDataRows],
+          columns: [{ width: 32 }, { width: 22 }],
+        },
+      ]).toFile(`Rekap-Penjualan-LiChick-${data.today}.xlsx`);
+      showNotice("File Excel (.xlsx) berhasil diunduh.");
+    } catch {
+      setErrorMsg("Gagal membuat file Excel (.xlsx). Coba lagi.");
+    }
   };
 
   const filteredOrders = useMemo(() => {
@@ -643,7 +713,7 @@ export function AdminDashboardClient() {
                       referrerPolicy="no-referrer"
                       className="max-h-[42vh] w-auto object-contain rounded-lg"
                     />
-                    {proofOrder.payment_proof_url.startsWith("http") && (
+                    {/^https?:\/\//i.test(proofOrder.payment_proof_url) && (
                       <a
                         href={proofOrder.payment_proof_url}
                         target="_blank"
@@ -723,7 +793,7 @@ export function AdminDashboardClient() {
             <span className="text-[11px] font-bold uppercase tracking-widest text-brand-orange block">
               {data?.mode === "google_sheets"
                 ? "Google Sheets Live"
-                : "Mode Preview Lokal (Isi GOOGLE_SHEETS_WEBHOOK_URL untuk Live)"}
+                : "Mode Preview Lokal"}
             </span>
             <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-dark">
               Admin Dashboard &amp; Validasi Pesanan
