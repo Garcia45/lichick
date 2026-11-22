@@ -1,20 +1,25 @@
-/vendor
+# Dependencies
+/node_modules
+
+# Build outputs
+/.next
+/out
+/.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE & OS
 /.idea
 /.vscode
-.env
-.env.backup
-.env.production
-.phpunit.result.cache
-/storage/*.key
-/storage/logs/*
-/storage/app/public/payment_proofs/*
-!/storage/app/public/payment_proofs/.gitkeep
-/storage/framework/cache/data/*
-/storage/framework/sessions/*
-/storage/framework/views/*
-/public/storage
-/public/hot
-database/database.sqlite
+.DS_Store
+Thumbs.db
+
+# Logs & misc
+*.log
 .agent
 .agents
-*.log
