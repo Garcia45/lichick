@@ -93,31 +93,12 @@ export const MENU_PRODUCTS: MenuProduct[] = [
   },
 ];
 
-// Stok bersama per jenis menu: 15 Macmoy + 10 Friesmoy = 25 porsi total
-export const DEFAULT_QUOTAS: Record<MenuBaseType, number> = {
-  mac: 15,
-  fries: 10,
-};
+// Stok global keseluruhan Pre Order: 25 porsi (bebas campur semua menu Friesmoy & Macmoy)
+export const DEFAULT_TOTAL_QUOTA = 25;
 
-export const BASE_STOCK_GROUPS: {
-  key: MenuBaseType;
-  label: string;
-  subtitle: string;
-  defaultQuota: number;
-}[] = [
-  {
-    key: "mac",
-    label: "Macmoy",
-    subtitle: "Stok gabungan Macmoy Gerah & Original",
-    defaultQuota: 15,
-  },
-  {
-    key: "fries",
-    label: "Friesmoy",
-    subtitle: "Stok gabungan Friesmoy Gerah & Original",
-    defaultQuota: 10,
-  },
-];
+export const DEFAULT_QUOTAS: Record<string, number> = {
+  total: DEFAULT_TOTAL_QUOTA,
+};
 
 export function getBaseTypeForProductId(productId: string): MenuBaseType {
   const prod = MENU_PRODUCTS.find((p) => p.id === productId);

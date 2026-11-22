@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEFAULT_QUOTAS, MENU_PRODUCTS, STORE_CONFIG } from "@/config/store";
+import { DEFAULT_TOTAL_QUOTA, MENU_PRODUCTS, STORE_CONFIG } from "@/config/store";
 import { createOrderRecord, fetchPublicQuotas } from "@/lib/sheets-client";
 import { generateOrderNumber } from "@/lib/format";
-import type { MenuBaseType, OrderItem } from "@/types/order";
+import type { OrderItem } from "@/types/order";
 
 const PRODUCT_BY_ID = new Map(MENU_PRODUCTS.map((p) => [p.id, p]));
 const PROOF_DATA_URL_REGEX = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/i;
@@ -106,7 +106,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cek status buka/tutup PO dan sisa stok bersama (15 Macmoy + 10 Friesmoy = 25 total) di server
+    // Cek status buka/tutup PO dan kuota global keseluruhan (25 porsi semua menu) di server
+    const requestedTotal = validItems.reduce((sum, it) => sum + it.quantity, 0);
     try {
       const quotaSnap = await fetchPublicQuotas();
       if (quotaSnap.ok && quotaSnap.store_config?.store_open === false) {
@@ -116,37 +117,21 @@ export async function POST(req: NextRequest) {
         );
       }
       if (quotaSnap.ok) {
-        const requestedByBase: Record<MenuBaseType, number> = { mac: 0, fries: 0 };
-        for (const item of validItems) {
-          const prod = PRODUCT_BY_ID.get(item.product_id);
-          if (prod) {
-            requestedByBase[prod.baseType] += item.quantity;
-          }
-        }
-
-        const baseMeta: { key: MenuBaseType; label: string }[] = [
-          { key: "mac", label: "Macmoy" },
-          { key: "fries", label: "Friesmoy" },
-        ];
-
-        for (const { key, label } of baseMeta) {
-          if (requestedByBase[key] <= 0) continue;
-          const maxQuota =
-            quotaSnap.store_config?.quotas?.[key] ?? DEFAULT_QUOTAS[key];
-          const sold = quotaSnap.sold_by_base?.[key] ?? 0;
-          const remaining = Math.max(0, maxQuota - sold);
-          if (requestedByBase[key] > remaining) {
-            return NextResponse.json(
-              {
-                ok: false,
-                error:
-                  remaining === 0
-                    ? `Stok ${label} sudah habis.`
-                    : `Stok ${label} hanya tersisa ${remaining} porsi (gabungan Gerah & Original).`,
-              },
-              { status: 409 }
-            );
-          }
+        const maxTotal =
+          quotaSnap.store_config?.quotas?.total ?? DEFAULT_TOTAL_QUOTA;
+        const soldTotal = quotaSnap.total_sold ?? 0;
+        const remainingTotal = Math.max(0, maxTotal - soldTotal);
+        if (requestedTotal > remainingTotal) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                remainingTotal === 0
+                  ? `Kuota Pre Order (${maxTotal} porsi) sudah penuh.`
+                  : `Sisa kuota Pre Order tinggal ${remainingTotal} porsi (gabungan semua menu).`,
+            },
+            { status: 409 }
+          );
         }
       }
     } catch {

@@ -90,6 +90,7 @@ export interface AdminDashboardResponse {
   menu_breakdown: MenuBreakdownItem[];
   sold_today: Record<string, number>;
   sold_by_base: Record<MenuBaseType, number>;
+  total_sold: number;
   store_config: StoreQuotaConfig;
   orders: OrderRecord[];
   sheet_url?: string;
@@ -102,5 +103,6 @@ export interface PublicQuotaResponse {
   today: string;
   sold_today: Record<string, number>;
   sold_by_base: Record<MenuBaseType, number>;
+  total_sold: number;
   store_config: StoreQuotaConfig;
 }

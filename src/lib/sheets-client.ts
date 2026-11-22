@@ -1,4 +1,9 @@
-import { DEFAULT_QUOTAS, getBaseTypeForProductId, STORE_CONFIG } from "@/config/store";
+import {
+  DEFAULT_QUOTAS,
+  DEFAULT_TOTAL_QUOTA,
+  getBaseTypeForProductId,
+  STORE_CONFIG,
+} from "@/config/store";
 import type {
   AdminDashboardResponse,
   MenuBaseType,
@@ -11,13 +16,14 @@ import type {
   StoreQuotaConfig,
 } from "@/types/order";
 
-function normalizeBaseQuotas(raw: unknown): Record<MenuBaseType, number> {
+function normalizeTotalQuotas(raw: unknown): Record<string, number> {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const macRaw = Number(obj.mac);
-  const friesRaw = Number(obj.fries);
+  const totalRaw = Number(obj.total);
   return {
-    mac: Number.isFinite(macRaw) && macRaw >= 0 ? Math.floor(macRaw) : DEFAULT_QUOTAS.mac,
-    fries: Number.isFinite(friesRaw) && friesRaw >= 0 ? Math.floor(friesRaw) : DEFAULT_QUOTAS.fries,
+    total:
+      Number.isFinite(totalRaw) && totalRaw >= 0
+        ? Math.floor(totalRaw)
+        : DEFAULT_TOTAL_QUOTA,
   };
 }
 
@@ -343,6 +349,7 @@ function computeAggregates(orders: OrderRecord[], today: string) {
     menu_breakdown: Object.values(menuMap),
     sold_today: soldToday,
     sold_by_base: soldByBase,
+    total_sold: totalPortionsSold,
   };
 }
 
@@ -359,14 +366,15 @@ export async function fetchPublicQuotas(): Promise<PublicQuotaResponse> {
       today,
       sold_today: agg.sold_today,
       sold_by_base: agg.sold_by_base,
+      total_sold: agg.total_sold,
       store_config: {
         store_open: store.storeConfig.store_open,
-        quotas: normalizeBaseQuotas(store.storeConfig.quotas),
+        quotas: normalizeTotalQuotas(store.storeConfig.quotas),
       },
     };
   }
 
-  // Ambil daftar pesanan aktif di sisi server agar stok total PO (15 Macmoy + 10 Friesmoy = 25)
+  // Ambil daftar pesanan aktif di sisi server agar stok global PO (25 porsi semua menu)
   // terakumulasi lintas hari dan tidak reset di tengah malam. Data pribadi pembeli TIDAK dikirim ke klien.
   const secret = getApiSecret();
   const url = `${webhook}${
@@ -389,9 +397,10 @@ export async function fetchPublicQuotas(): Promise<PublicQuotaResponse> {
     today: data.today || today,
     sold_today: agg.sold_today,
     sold_by_base: agg.sold_by_base,
+    total_sold: agg.total_sold,
     store_config: {
       store_open: data.store_config?.store_open !== false,
-      quotas: normalizeBaseQuotas(data.store_config?.quotas),
+      quotas: normalizeTotalQuotas(data.store_config?.quotas),
     },
   };
 }
@@ -536,9 +545,10 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardResponse>
       menu_breakdown: agg.menu_breakdown,
       sold_today: agg.sold_today,
       sold_by_base: agg.sold_by_base,
+      total_sold: agg.total_sold,
       store_config: {
         store_open: store.storeConfig.store_open,
-        quotas: normalizeBaseQuotas(store.storeConfig.quotas),
+        quotas: normalizeTotalQuotas(store.storeConfig.quotas),
       },
       orders: store.orders,
       sheet_url: sheetUrl || undefined,
@@ -574,9 +584,10 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardResponse>
     menu_breakdown: agg.menu_breakdown,
     sold_today: agg.sold_today,
     sold_by_base: agg.sold_by_base,
+    total_sold: agg.total_sold,
     store_config: {
       store_open: data.store_config?.store_open !== false,
-      quotas: normalizeBaseQuotas(data.store_config?.quotas),
+      quotas: normalizeTotalQuotas(data.store_config?.quotas),
     },
     orders: normalizedOrders,
     sheet_url: sheetUrl || undefined,
