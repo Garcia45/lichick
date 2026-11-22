@@ -5,7 +5,7 @@ export const STORE_CONFIG = {
   brandSub: "by LUCUIH",
   brandTagline: "OPEN PRE ORDER: Friesmoy & Macmoy",
   brandDescription:
-    "Potongan ayam crispy hangat khas LiChick dengan pilihan French Fries atau Mac & Cheese creamy, tersedia dalam versi Original gurih dan GERAH dengan saus Nashville pedas khas LUCUIH.",
+    "Potongan ayam crispy hangat dengan pilihan French Fries atau Mac & Cheese creamy, tersedia dalam versi Original gurih dan GERAH dengan saus Nashville pedas khas LiChick.",
   adminWhatsApp: process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || "6282190437013",
   adminWhatsAppDisplay: "0821-9043-7013",
   instagramHandle: "@lichikbylucuih.id",
@@ -13,7 +13,7 @@ export const STORE_CONFIG = {
   logoUrl: "/images/lichick-logo.png",
   posterUrl: "/images/poster-lichick.jpg",
   paymentInfo: {
-    label: "QRIS Resmi",
+    label: "QRIS",
     merchantName: "LiChick by Lucuih, Makanan",
     nmid: "ID1026645157441",
     qrisImageUrl: "/images/qris-lichick.jpg",
@@ -36,7 +36,7 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     priceShort: "18K",
     tagline: "French Fries w/ Crispy Chicken, Saus Nashville Pedas",
     description:
-      "Kentang goreng golden-crispy dipadu potongan ayam crispy renyah khas LiChick dengan siraman saus Nashville pedas khas LUCUIH.",
+      "Kentang goreng golden-crispy dipadu potongan ayam crispy renyah dengan siraman saus Nashville pedas khas LiChick.",
     price: 18000,
     defaultQuota: 10,
     badge: "Pedas Favorit",
@@ -52,7 +52,7 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     priceShort: "20K",
     tagline: "Mac & Cheese w/ Crispy Chicken, Saus Nashville Pedas",
     description:
-      "Makaroni creamy saus keju lumer berpadu potongan ayam crispy juicy dan siraman saus Nashville pedas khas LUCUIH.",
+      "Makaroni creamy saus keju lumer berpadu potongan ayam crispy juicy dan siraman saus Nashville pedas khas LiChick.",
     price: 20000,
     defaultQuota: 15,
     badge: "Signature Pedas",

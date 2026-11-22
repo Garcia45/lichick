@@ -1043,7 +1043,7 @@ export function StorefrontClient({ initialQuota = null }: StorefrontClientProps)
                 <div className="w-full min-h-[44px] px-3.5 py-2.5 rounded-lg border border-brand-orange bg-brand-surface text-sm font-bold text-brand-deep flex items-center justify-between gap-2">
                   <span>{pickupDay}</span>
                   <span className="text-[11px] font-semibold text-brand-muted">
-                    Jadwal Resmi PO
+                    Jadwal PO
                   </span>
                 </div>
               </div>
