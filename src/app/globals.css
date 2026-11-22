@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+/* ============================================================================
+ * DESIGN TOKENS LICHICK (SESUAI POSTER RESMI, MATTE EDITORIAL, ZERO GLASS)
+ * ============================================================================ */
+@theme {
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fredoka), ui-rounded, sans-serif;
+  --font-gerah: var(--font-marker), cursive, sans-serif;
+
+  --color-brand-orange: #ea6c04;
+  --color-brand-orange-hover: #c95800;
+  --color-brand-deep: #8f3500;
+  --color-brand-amber: #ffbe1a;
+  --color-brand-gerah: #ff1e1e;
+  --color-brand-kraft: #8f5a38;
+
+  --color-brand-surface: #f7ead7;
+  --color-brand-creamy: #fffaf2;
+  --color-brand-paper: #faf4ea;
+  --color-brand-dark: #14100d;
+  --color-brand-charcoal: #221a15;
+  --color-brand-muted: #665143;
+  --color-brand-border: #e4d2bc;
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: clip;
+}
+
+body {
+  background-color: var(--color-brand-paper);
+  color: var(--color-brand-dark);
+  font-family: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+.font-display {
+  font-family: var(--font-fredoka), ui-rounded, sans-serif;
+}
+
+.font-gerah {
+  font-family: var(--font-marker), cursive, sans-serif;
+}
+
+/* Permukaan Oranye Poster LiChick yang tegas dan solid */
+.bg-lichick-poster {
+  background: linear-gradient(155deg, #f3840c 0%, #dc6603 55%, #b54800 100%);
+}
+
+/* Splat Cat Hitam ala Poster untuk Badge "GERAH" dan Harga "18K / 20K" */
+.gerah-splat {
+  background: #0e0c0b;
+  clip-path: polygon(
+    4% 18%,
+    14% 6%,
+    31% 12%,
+    48% 3%,
+    68% 10%,
+    86% 4%,
+    97% 19%,
+    93% 44%,
+    99% 73%,
+    89% 93%,
+    71% 88%,
+    52% 97%,
+    33% 89%,
+    13% 95%,
+    2% 76%,
+    7% 48%
+  );
+}
+
+.price-splat {
+  background: #0e0c0b;
+  clip-path: polygon(
+    18% 4%,
+    38% 12%,
+    57% 2%,
+    78% 10%,
+    93% 26%,
+    88% 47%,
+    98% 67%,
+    85% 86%,
+    66% 96%,
+    45% 89%,
+    24% 97%,
+    8% 82%,
+    12% 60%,
+    2% 39%,
+    11% 18%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Format cetak bersih untuk Struk Pesanan & Rekap Dapur di /admin */
+@media print {
+  header,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
