@@ -1191,7 +1191,7 @@ export function StorefrontClient() {
                     ? "Memproses Gambar..."
                     : submitting
                     ? "Mencatat Pesanan..."
-                    : `Pesan Sekarang ke WhatsApp (${STORE_CONFIG.adminWhatsAppDisplay})`}
+                    : `Konfirmasi Pesanan ke WhatsApp (${STORE_CONFIG.adminWhatsAppDisplay})`}
                 </button>
               )}
                 </>
