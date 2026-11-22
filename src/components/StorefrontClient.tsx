@@ -345,7 +345,6 @@ export function StorefrontClient() {
       });
 
       try {
-        localStorage.setItem("lichick_last_order_code", orderNumber);
         sessionStorage.setItem(`lichick_wa_url_${orderNumber}`, waUrl);
       } catch {
         // Abaikan jika browser memblokir storage

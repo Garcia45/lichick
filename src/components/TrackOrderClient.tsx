@@ -133,7 +133,6 @@ export function TrackOrderClient() {
   const justOrdered = searchParams.get("ordered") === "1";
 
   const [query, setQuery] = useState(initialTicket);
-  const [recentOrderCode, setRecentOrderCode] = useState("");
   const [storedWaUrl, setStoredWaUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -172,12 +171,6 @@ export function TrackOrderClient() {
         setOrder(data.order || null);
         if (data.order) {
           setShowSearchBar(false);
-          try {
-            localStorage.setItem(LAST_ORDER_STORAGE_KEY, data.order.order_number);
-            setRecentOrderCode(data.order.order_number);
-          } catch {
-            // Abaikan jika storage diblokir
-          }
         }
       } catch {
         if (!opts?.silent) {
@@ -192,12 +185,10 @@ export function TrackOrderClient() {
     []
   );
 
-  // Ambil kode pesanan terakhir dari localStorage & link WA dari sessionStorage (jika baru saja order)
+  // Bersihkan riwayat kode lama di localStorage & ambil link WA dari sessionStorage (khusus tab yang baru order)
   useEffect(() => {
     try {
-      const savedCode = localStorage.getItem(LAST_ORDER_STORAGE_KEY) || "";
-      if (savedCode) setRecentOrderCode(savedCode);
-
+      localStorage.removeItem(LAST_ORDER_STORAGE_KEY);
       if (initialTicket) {
         const wa =
           sessionStorage.getItem(`${LAST_WA_STORAGE_PREFIX}${initialTicket}`) ||
@@ -624,27 +615,6 @@ export function TrackOrderClient() {
               {loading ? "Mencari..." : "Lacak"}
             </button>
           </form>
-
-          {recentOrderCode && recentOrderCode !== order?.order_number && (
-            <div className="pt-1 flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-brand-muted font-medium">
-                Pesanan terakhirmu:
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery(recentOrderCode);
-                  router.replace(
-                    `/track?order_number=${encodeURIComponent(recentOrderCode)}`
-                  );
-                  fetchTicket(recentOrderCode);
-                }}
-                className="px-3 py-1 rounded-full bg-brand-surface border border-brand-orange text-brand-deep font-mono font-bold cursor-pointer hover:bg-orange-200 transition-colors"
-              >
-                {recentOrderCode}
-              </button>
-            </div>
-          )}
         </section>
       )}
 
