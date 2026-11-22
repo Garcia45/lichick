@@ -478,7 +478,7 @@ export function StorefrontClient() {
                 className="grid grid-cols-1 md:grid-cols-12 items-stretch"
               >
                 {/* Panel Foto Produk */}
-                <div className="md:col-span-4 lg:col-span-4 bg-lichick-poster p-5 sm:p-6 flex flex-col items-center justify-between min-h-[230px] sm:min-h-[260px]">
+                <div className="md:col-span-4 lg:col-span-4 bg-lichick-poster p-4 sm:p-5 flex flex-col items-center justify-between gap-2">
                   <div className="w-full flex items-center justify-between gap-2">
                     <span className="price-splat font-display font-bold text-white text-sm px-3.5 py-1.5">
                       {product.priceShort}
@@ -500,7 +500,7 @@ export function StorefrontClient() {
                   <img
                     src={product.imageUrl}
                     alt={product.name}
-                    className="h-[175px] sm:h-[200px] w-auto object-contain my-2"
+                    className="h-[145px] sm:h-[160px] w-auto object-contain my-1"
                   />
 
                   <div className="w-full flex items-center justify-between text-[11px] font-bold text-orange-100">
@@ -514,8 +514,8 @@ export function StorefrontClient() {
                 </div>
 
                 {/* Detail Menu & Kontrol Jumlah */}
-                <div className="md:col-span-8 lg:col-span-8 p-5 sm:p-6 flex flex-col justify-between gap-4">
-                  <div className="space-y-3">
+                <div className="md:col-span-8 lg:col-span-8 p-5 sm:p-6 flex flex-col justify-center gap-4">
+                  <div className="space-y-2">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2.5 flex-wrap">
