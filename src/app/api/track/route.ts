@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sanitizeOrderForPublicTrack } from "@/lib/order-aggregates";
 import {
   checkSlidingRateLimit,
   getTrustedClientIp,
-  maskDeliveryAddress,
-  maskWhatsappNumber,
 } from "@/lib/request-security";
 import { trackOrderByNumber } from "@/lib/sheets-client";
 
@@ -13,7 +12,7 @@ export async function GET(req: NextRequest) {
     const rate = checkSlidingRateLimit({
       bucket: "track_lookup",
       key: clientIp,
-      maxRequests: 30,
+      maxRequests: 60,
       windowMs: 5 * 60 * 1000,
     });
     if (!rate.allowed) {
@@ -39,12 +38,7 @@ export async function GET(req: NextRequest) {
     // Minimalkan eksposur PII pada endpoint publik /api/track:
     // hapus URL bukti pembayaran Google Drive & samarkan nomor WA / alamat panjang
     const sanitizedOrder = result.order
-      ? {
-          ...result.order,
-          customer_whatsapp: maskWhatsappNumber(result.order.customer_whatsapp),
-          delivery_address: maskDeliveryAddress(result.order.delivery_address),
-          payment_proof_url: "",
-        }
+      ? sanitizeOrderForPublicTrack(result.order)
       : null;
 
     return NextResponse.json({

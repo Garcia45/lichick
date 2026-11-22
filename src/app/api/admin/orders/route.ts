@@ -22,7 +22,7 @@ const ALLOWED_PAYMENT_STATUSES: PaymentStatus[] = [
   "ditolak",
 ];
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json(
       { ok: false, error: "Sesi admin tidak aktif. Silakan login terlebih dahulu." },
@@ -31,7 +31,8 @@ export async function GET() {
   }
 
   try {
-    const data = await fetchAdminDashboardData();
+    const forceRefresh = req.nextUrl.searchParams.get("refresh") === "1";
+    const data = await fetchAdminDashboardData({ forceRefresh });
     return NextResponse.json(data);
   } catch (err) {
     return NextResponse.json(

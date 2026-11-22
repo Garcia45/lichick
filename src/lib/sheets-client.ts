@@ -1,13 +1,11 @@
 import {
   DEFAULT_QUOTAS,
   DEFAULT_TOTAL_QUOTA,
-  getBaseTypeForProductId,
   STORE_CONFIG,
 } from "@/config/store";
+import { computeOrderAggregates } from "@/lib/order-aggregates";
 import type {
   AdminDashboardResponse,
-  MenuBaseType,
-  MenuBreakdownItem,
   OrderItem,
   OrderRecord,
   OrderStatus,
@@ -164,6 +162,159 @@ async function parseWebhookJson(res: Response): Promise<any> {
   }
 }
 
+// ============================================================================
+// WRITE-THROUGH SNAPSHOT CACHE + REQUEST COALESCING (SWR)
+// Menghilangkan delay 2-5 detik saat refresh, tracking, dan update status
+// ============================================================================
+
+interface SheetSnapshot {
+  orders: OrderRecord[];
+  storeConfig: StoreQuotaConfig;
+  today: string;
+  fetchedAt: number;
+}
+
+interface RecentOrderEntry {
+  order: OrderRecord;
+  savedAt: number;
+}
+
+interface SheetCacheState {
+  webhookUrl: string;
+  snapshot: SheetSnapshot | null;
+  inflight: Promise<SheetSnapshot> | null;
+  mutationVersion: number;
+  recentOrders: Map<string, RecentOrderEntry>;
+}
+
+const SNAPSHOT_FRESH_MS = 12_000; // <12s: langsung pakai memori (~0ms)
+const SNAPSHOT_STALE_MS = 90_000; // 12-90s: langsung pakai memori + sync diam-diam di background
+const TRACK_FRESH_MS = 6_000; // khusus pelacakan: revalidasi background setelah 6s
+const RECENT_ORDER_TTL_MS = 45_000; // pesanan baru/baru diupdate langsung siap di /track
+
+const globalForSheetCache = globalThis as unknown as {
+  __lichickSheetCacheV1?: SheetCacheState;
+};
+
+function getSheetCache(webhook: string): SheetCacheState {
+  if (
+    !globalForSheetCache.__lichickSheetCacheV1 ||
+    globalForSheetCache.__lichickSheetCacheV1.webhookUrl !== webhook
+  ) {
+    globalForSheetCache.__lichickSheetCacheV1 = {
+      webhookUrl: webhook,
+      snapshot: null,
+      inflight: null,
+      mutationVersion: 0,
+      recentOrders: new Map(),
+    };
+  }
+  return globalForSheetCache.__lichickSheetCacheV1;
+}
+
+function rememberRecentOrder(cache: SheetCacheState, order: OrderRecord) {
+  const code = order.order_number.toUpperCase();
+  if (!code) return;
+  if (cache.recentOrders.size > 200) {
+    const now = Date.now();
+    for (const [k, v] of cache.recentOrders.entries()) {
+      if (now - v.savedAt > RECENT_ORDER_TTL_MS) {
+        cache.recentOrders.delete(k);
+      }
+    }
+  }
+  cache.recentOrders.set(code, { order, savedAt: Date.now() });
+}
+
+function fetchFreshSnapshotFromAppsScript(webhook: string): Promise<SheetSnapshot> {
+  const cache = getSheetCache(webhook);
+  if (cache.inflight) {
+    return cache.inflight;
+  }
+
+  const startedVersion = cache.mutationVersion;
+  const todayFallback = getTodayWib();
+  const secret = getApiSecret();
+  const url = `${webhook}${
+    webhook.includes("?") ? "&" : "?"
+  }action=admin${secret ? `&secret=${encodeURIComponent(secret)}` : ""}`;
+
+  const reqPromise = (async (): Promise<SheetSnapshot> => {
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      cache: "no-store",
+      signal: AbortSignal.timeout(18_000),
+    });
+    const data = await parseWebhookJson(res);
+    if (!data.ok) {
+      throw new Error(data.error || "Gagal mengambil data dari Google Sheets");
+    }
+
+    const normalizedOrders: OrderRecord[] = Array.isArray(data.orders)
+      ? data.orders.map((o: OrderRecord) => normalizeOrderRecord(o))
+      : [];
+
+    const freshSnapshot: SheetSnapshot = {
+      orders: normalizedOrders,
+      storeConfig: {
+        store_open: data.store_config?.store_open !== false,
+        quotas: normalizeTotalQuotas(data.store_config?.quotas),
+      },
+      today: data.today || todayFallback,
+      fetchedAt: Date.now(),
+    };
+
+    // Hanya timpa cache jika tidak ada mutasi (create/update/delete) yang terjadi
+    // selama GET ini berlangsung (mencegah data lama menimpa update terbaru)
+    if (cache.mutationVersion === startedVersion) {
+      cache.snapshot = freshSnapshot;
+      return freshSnapshot;
+    }
+
+    return cache.snapshot || freshSnapshot;
+  })().finally(() => {
+    if (cache.inflight === reqPromise) {
+      cache.inflight = null;
+    }
+  });
+
+  cache.inflight = reqPromise;
+  return reqPromise;
+}
+
+async function getSheetSnapshot(
+  webhook: string,
+  opts?: { forceRefresh?: boolean; freshMs?: number }
+): Promise<SheetSnapshot> {
+  const cache = getSheetCache(webhook);
+  const freshMs = opts?.freshMs ?? SNAPSHOT_FRESH_MS;
+
+  if (!opts?.forceRefresh && cache.snapshot) {
+    const age = Date.now() - cache.snapshot.fetchedAt;
+    if (age <= freshMs) {
+      return cache.snapshot;
+    }
+    if (age <= SNAPSHOT_STALE_MS) {
+      // Stale-While-Revalidate: kembalikan snapshot langsung (<1ms) sambil sync diam-diam
+      fetchFreshSnapshotFromAppsScript(webhook).catch(() => {
+        // Abaikan error background refresh; snapshot sebelumnya tetap berlaku
+      });
+      return cache.snapshot;
+    }
+  }
+
+  try {
+    return await fetchFreshSnapshotFromAppsScript(webhook);
+  } catch (err) {
+    // Jika upstream sementara timeout tapi snapshot lama masih tersedia, tetap layani agar tidak blank
+    if (!opts?.forceRefresh && cache.snapshot) {
+      return cache.snapshot;
+    }
+    throw err;
+  }
+}
+
 interface DemoStoreState {
   orders: OrderRecord[];
   storeConfig: StoreQuotaConfig;
@@ -284,81 +435,15 @@ function getDemoStore(): DemoStoreState {
   return globalForDemo.__lichickDemoStoreV4;
 }
 
-function computeAggregates(orders: OrderRecord[], today: string) {
-  const soldToday: Record<string, number> = {};
-  const soldByBase: Record<MenuBaseType, number> = { mac: 0, fries: 0 };
-  const menuMap: Record<string, MenuBreakdownItem> = {};
-  const statusCounts: Record<OrderStatus, number> = {
-    belum_dibuat: 0,
-    sedang_dibuat: 0,
-    siap_diantar: 0,
-    selesai: 0,
-    dibatalkan: 0,
-  };
-
-  let grossRevenue = 0;
-  let verifiedRevenue = 0;
-  let totalPortionsSold = 0;
-  let pendingPayments = 0;
-
-  for (const order of orders) {
-    statusCounts[order.order_status] =
-      (statusCounts[order.order_status] || 0) + 1;
-
-    if (order.order_status !== "dibatalkan") {
-      grossRevenue += order.total_amount;
-      totalPortionsSold += order.total_portions;
-
-      if (order.payment_status === "tervalidasi") {
-        verifiedRevenue += order.total_amount;
-      } else if (order.payment_status === "menunggu_validasi") {
-        pendingPayments += 1;
-      }
-
-      if (order.order_date === today || !order.order_date) {
-        for (const item of order.items) {
-          soldToday[item.product_id] =
-            (soldToday[item.product_id] || 0) + item.quantity;
-        }
-      }
-
-      for (const item of order.items) {
-        const base = getBaseTypeForProductId(item.product_id);
-        soldByBase[base] = (soldByBase[base] || 0) + item.quantity;
-
-        if (!menuMap[item.name]) {
-          menuMap[item.name] = { name: item.name, quantity: 0, revenue: 0 };
-        }
-        menuMap[item.name].quantity += item.quantity;
-        menuMap[item.name].revenue += item.subtotal;
-      }
-    }
-  }
-
-  return {
-    summary: {
-      total_orders: orders.length,
-      active_orders: orders.length - (statusCounts.dibatalkan || 0),
-      gross_revenue: grossRevenue,
-      verified_revenue: verifiedRevenue,
-      total_portions_sold: totalPortionsSold,
-      pending_payments: pendingPayments,
-      status_counts: statusCounts,
-    },
-    menu_breakdown: Object.values(menuMap),
-    sold_today: soldToday,
-    sold_by_base: soldByBase,
-    total_sold: totalPortionsSold,
-  };
-}
-
-export async function fetchPublicQuotas(): Promise<PublicQuotaResponse> {
+export async function fetchPublicQuotas(opts?: {
+  forceRefresh?: boolean;
+}): Promise<PublicQuotaResponse> {
   const webhook = getWebhookUrl();
   const today = getTodayWib();
 
   if (!webhook) {
     const store = getDemoStore();
-    const agg = computeAggregates(store.orders, today);
+    const agg = computeOrderAggregates(store.orders, today);
     return {
       ok: true,
       mode: "demo",
@@ -373,33 +458,24 @@ export async function fetchPublicQuotas(): Promise<PublicQuotaResponse> {
     };
   }
 
-  // Ambil daftar pesanan aktif di sisi server agar stok global PO (25 porsi semua menu)
-  // terakumulasi lintas hari dan tidak reset di tengah malam. Data pribadi pembeli TIDAK dikirim ke klien.
-  const secret = getApiSecret();
-  const url = `${webhook}${
-    webhook.includes("?") ? "&" : "?"
-  }action=admin${secret ? `&secret=${encodeURIComponent(secret)}` : ""}`;
-  const res = await fetch(url, {
-    method: "GET",
-    redirect: "follow",
-    cache: "no-store",
+  // Ambil snapshot tercache di sisi server agar stok global PO (25 porsi semua menu)
+  // terakumulasi lintas hari dan respon instan (~0ms saat cache hangat).
+  // Data pribadi pembeli TIDAK pernah dikirim ke klien.
+  const snap = await getSheetSnapshot(webhook, {
+    forceRefresh: opts?.forceRefresh,
   });
-  const data = await parseWebhookJson(res);
-  const normalizedOrders: OrderRecord[] = Array.isArray(data.orders)
-    ? data.orders.map((o: OrderRecord) => normalizeOrderRecord(o))
-    : [];
-  const agg = computeAggregates(normalizedOrders, data.today || today);
+  const agg = computeOrderAggregates(snap.orders, snap.today || today);
 
   return {
-    ok: Boolean(data.ok),
+    ok: true,
     mode: "google_sheets",
-    today: data.today || today,
+    today: snap.today || today,
     sold_today: agg.sold_today,
     sold_by_base: agg.sold_by_base,
     total_sold: agg.total_sold,
     store_config: {
-      store_open: data.store_config?.store_open !== false,
-      quotas: normalizeTotalQuotas(data.store_config?.quotas),
+      store_open: snap.storeConfig.store_open !== false,
+      quotas: normalizeTotalQuotas(snap.storeConfig.quotas),
     },
   };
 }
@@ -470,6 +546,7 @@ export async function createOrderRecord(input: {
     method: "POST",
     redirect: "follow",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
+    signal: AbortSignal.timeout(25_000),
     body: JSON.stringify({
       action: "create_order",
       ...record,
@@ -490,14 +567,36 @@ export async function createOrderRecord(input: {
       error: data.error || "Gagal menyimpan ke Google Sheets",
     };
   }
+
+  const savedOrder = data.order ? normalizeOrderRecord(data.order) : record;
+
+  // Write-through cache: langsung masukkan pesanan baru ke memori agar
+  // kuota (/), halaman /track, dan Portal Admin langsung akurat tanpa tunggu roundtrip ulang
+  const cache = getSheetCache(webhook);
+  cache.mutationVersion += 1;
+  rememberRecentOrder(cache, savedOrder);
+  if (cache.snapshot) {
+    const deduped = cache.snapshot.orders.filter(
+      (o) => o.order_number.toUpperCase() !== savedOrder.order_number.toUpperCase()
+    );
+    cache.snapshot = {
+      ...cache.snapshot,
+      orders: [savedOrder, ...deduped],
+      fetchedAt: Date.now(),
+    };
+  }
+
   return {
     ok: true,
     mode: "google_sheets",
-    order: data.order ? normalizeOrderRecord(data.order) : record,
+    order: savedOrder,
   };
 }
 
-export async function trackOrderByNumber(orderNumber: string): Promise<{
+export async function trackOrderByNumber(
+  orderNumber: string,
+  opts?: { forceRefresh?: boolean }
+): Promise<{
   ok: boolean;
   mode: "google_sheets" | "demo";
   order: OrderRecord | null;
@@ -512,6 +611,37 @@ export async function trackOrderByNumber(orderNumber: string): Promise<{
     return { ok: true, mode: "demo", order: found };
   }
 
+  const cache = getSheetCache(webhook);
+
+  if (!opts?.forceRefresh) {
+    // 1. Cek cache pesanan baru / baru diupdate (<45s) -> respon <1ms
+    const recent = cache.recentOrders.get(code);
+    if (recent && Date.now() - recent.savedAt <= RECENT_ORDER_TTL_MS) {
+      if (Date.now() - recent.savedAt > TRACK_FRESH_MS) {
+        fetchFreshSnapshotFromAppsScript(webhook).catch(() => {});
+      }
+      return { ok: true, mode: "google_sheets", order: recent.order };
+    }
+
+    // 2. Cek snapshot global jika masih valid -> respon <1ms
+    if (cache.snapshot) {
+      const age = Date.now() - cache.snapshot.fetchedAt;
+      if (age <= SNAPSHOT_STALE_MS) {
+        const hit = cache.snapshot.orders.find(
+          (o) => o.order_number.toUpperCase() === code
+        );
+        if (hit) {
+          if (age > TRACK_FRESH_MS) {
+            fetchFreshSnapshotFromAppsScript(webhook).catch(() => {});
+          }
+          return { ok: true, mode: "google_sheets", order: hit };
+        }
+        // Jika belum ketemu di snapshot (mis. baru dibuat di instance serverless lain),
+        // lanjut query langsung ke Apps Script agar tidak pernah false "tidak ditemukan".
+      }
+    }
+  }
+
   const url = `${webhook}${
     webhook.includes("?") ? "&" : "?"
   }order_number=${encodeURIComponent(code)}`;
@@ -519,23 +649,52 @@ export async function trackOrderByNumber(orderNumber: string): Promise<{
     method: "GET",
     redirect: "follow",
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
   const data = await parseWebhookJson(res);
+  const tracked = data.tracked_order
+    ? normalizeOrderRecord(data.tracked_order)
+    : null;
+
+  if (tracked) {
+    rememberRecentOrder(cache, tracked);
+    if (cache.snapshot) {
+      const idx = cache.snapshot.orders.findIndex(
+        (o) => o.order_number.toUpperCase() === tracked.order_number.toUpperCase()
+      );
+      if (idx >= 0) {
+        const nextOrders = [...cache.snapshot.orders];
+        nextOrders[idx] = tracked;
+        cache.snapshot = { ...cache.snapshot, orders: nextOrders };
+      } else {
+        cache.snapshot = {
+          ...cache.snapshot,
+          orders: [tracked, ...cache.snapshot.orders],
+        };
+      }
+    } else {
+      // Hangatkan snapshot global di background agar navigasi ke / atau Portal Admin ikut instan
+      fetchFreshSnapshotFromAppsScript(webhook).catch(() => {});
+    }
+  }
+
   return {
     ok: Boolean(data.ok),
     mode: "google_sheets",
-    order: data.tracked_order ? normalizeOrderRecord(data.tracked_order) : null,
+    order: tracked,
   };
 }
 
-export async function fetchAdminDashboardData(): Promise<AdminDashboardResponse> {
+export async function fetchAdminDashboardData(opts?: {
+  forceRefresh?: boolean;
+}): Promise<AdminDashboardResponse> {
   const webhook = getWebhookUrl();
   const today = getTodayWib();
   const sheetUrl = (process.env.NEXT_PUBLIC_GOOGLE_SHEETS_URL || "").trim();
 
   if (!webhook) {
     const store = getDemoStore();
-    const agg = computeAggregates(store.orders, today);
+    const agg = computeOrderAggregates(store.orders, today);
     return {
       ok: true,
       mode: "demo",
@@ -554,41 +713,25 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardResponse>
     };
   }
 
-  const secret = getApiSecret();
-  const url = `${webhook}${
-    webhook.includes("?") ? "&" : "?"
-  }action=admin${secret ? `&secret=${encodeURIComponent(secret)}` : ""}`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    redirect: "follow",
-    cache: "no-store",
+  const snap = await getSheetSnapshot(webhook, {
+    forceRefresh: opts?.forceRefresh,
   });
-  const data = await parseWebhookJson(res);
-
-  if (!data.ok) {
-    throw new Error(data.error || "Gagal mengambil data dari Google Sheets");
-  }
-
-  const normalizedOrders: OrderRecord[] = Array.isArray(data.orders)
-    ? data.orders.map((o: OrderRecord) => normalizeOrderRecord(o))
-    : [];
-  const agg = computeAggregates(normalizedOrders, data.today || today);
+  const agg = computeOrderAggregates(snap.orders, snap.today || today);
 
   return {
     ok: true,
     mode: "google_sheets",
-    today: data.today || today,
+    today: snap.today || today,
     summary: agg.summary,
     menu_breakdown: agg.menu_breakdown,
     sold_today: agg.sold_today,
     sold_by_base: agg.sold_by_base,
     total_sold: agg.total_sold,
     store_config: {
-      store_open: data.store_config?.store_open !== false,
-      quotas: normalizeTotalQuotas(data.store_config?.quotas),
+      store_open: snap.storeConfig.store_open !== false,
+      quotas: normalizeTotalQuotas(snap.storeConfig.quotas),
     },
-    orders: normalizedOrders,
+    orders: snap.orders,
     sheet_url: sheetUrl || undefined,
   };
 }
@@ -624,6 +767,7 @@ export async function updateOrderStatusRecord(params: {
     method: "POST",
     redirect: "follow",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({
       action: "update_status",
       secret: getApiSecret(),
@@ -641,10 +785,40 @@ export async function updateOrderStatusRecord(params: {
       error: data.error || "Gagal mengubah status di Google Sheets",
     };
   }
+
+  const updatedOrder = data.order ? normalizeOrderRecord(data.order) : undefined;
+
+  // Write-through cache: status baru langsung aktif di /track & dashboard dalam <1ms
+  const cache = getSheetCache(webhook);
+  cache.mutationVersion += 1;
+  if (updatedOrder) {
+    rememberRecentOrder(cache, updatedOrder);
+  }
+  if (cache.snapshot) {
+    const nowText = getNowWib();
+    const nextOrders = cache.snapshot.orders.map((o) => {
+      if (o.order_number.toUpperCase() !== code) return o;
+      if (updatedOrder) return updatedOrder;
+      return {
+        ...o,
+        order_status: params.orderStatus || o.order_status,
+        payment_status: params.paymentStatus || o.payment_status,
+        updated_at: nowText,
+      };
+    });
+    cache.snapshot = {
+      ...cache.snapshot,
+      orders: nextOrders,
+      fetchedAt: Date.now(),
+    };
+    const matched = nextOrders.find((o) => o.order_number.toUpperCase() === code);
+    if (matched) rememberRecentOrder(cache, matched);
+  }
+
   return {
     ok: true,
     mode: "google_sheets",
-    order: data.order ? normalizeOrderRecord(data.order) : undefined,
+    order: updatedOrder,
   };
 }
 
@@ -668,6 +842,7 @@ export async function deleteOrderRecord(
     method: "POST",
     redirect: "follow",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({
       action: "delete_order",
       secret: getApiSecret(),
@@ -675,6 +850,20 @@ export async function deleteOrderRecord(
     }),
   });
   const data = await parseWebhookJson(res);
+  if (data.ok) {
+    const cache = getSheetCache(webhook);
+    cache.mutationVersion += 1;
+    cache.recentOrders.delete(code);
+    if (cache.snapshot) {
+      cache.snapshot = {
+        ...cache.snapshot,
+        orders: cache.snapshot.orders.filter(
+          (o) => o.order_number.toUpperCase() !== code
+        ),
+        fetchedAt: Date.now(),
+      };
+    }
+  }
   return { ok: Boolean(data.ok), error: data.error };
 }
 
@@ -697,6 +886,7 @@ export async function updateStoreConfigRecord(input: {
     method: "POST",
     redirect: "follow",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({
       action: "update_config",
       secret: getApiSecret(),
@@ -705,5 +895,19 @@ export async function updateStoreConfigRecord(input: {
     }),
   });
   const data = await parseWebhookJson(res);
+  if (data.ok) {
+    const cache = getSheetCache(webhook);
+    cache.mutationVersion += 1;
+    if (cache.snapshot) {
+      cache.snapshot = {
+        ...cache.snapshot,
+        storeConfig: {
+          store_open: input.store_open,
+          quotas: normalizeTotalQuotas(input.quotas),
+        },
+        fetchedAt: Date.now(),
+      };
+    }
+  }
   return { ok: Boolean(data.ok), error: data.error };
 }

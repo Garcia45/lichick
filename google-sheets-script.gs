@@ -136,6 +136,29 @@ function getOrCreateConfigSheet() {
   return sheet;
 }
 
+function getProofFolder() {
+  const props = PropertiesService.getScriptProperties();
+  const cachedId = props.getProperty('PROOF_FOLDER_ID');
+  if (cachedId) {
+    try {
+      const folder = DriveApp.getFolderById(cachedId);
+      if (folder && !folder.isTrashed()) return folder;
+    } catch (e) {
+      // Folder lama tidak valid, cari ulang di bawah
+    }
+  }
+
+  let folder;
+  const existing = DriveApp.getFoldersByName(PROOF_FOLDER_NAME);
+  if (existing.hasNext()) {
+    folder = existing.next();
+  } else {
+    folder = DriveApp.createFolder(PROOF_FOLDER_NAME);
+  }
+  props.setProperty('PROOF_FOLDER_ID', folder.getId());
+  return folder;
+}
+
 function saveProofToDrive(orderNumber, dataUrl) {
   if (!dataUrl || typeof dataUrl !== 'string') return '';
   if (dataUrl.indexOf('http://') === 0 || dataUrl.indexOf('https://') === 0) {
@@ -151,14 +174,7 @@ function saveProofToDrive(orderNumber, dataUrl) {
     const bytes = Utilities.base64Decode(base64Data);
     const blob = Utilities.newBlob(bytes, mimeType, orderNumber + '.' + ext);
 
-    let folder;
-    const existing = DriveApp.getFoldersByName(PROOF_FOLDER_NAME);
-    if (existing.hasNext()) {
-      folder = existing.next();
-    } else {
-      folder = DriveApp.createFolder(PROOF_FOLDER_NAME);
-    }
-
+    const folder = getProofFolder();
     const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1200';
