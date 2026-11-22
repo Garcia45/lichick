@@ -446,7 +446,7 @@ export function StorefrontClient({ initialQuota = null }: StorefrontClientProps)
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-brand-border pb-4">
           <div>
             <span className="text-[11px] font-bold uppercase tracking-widest text-brand-orange block">
-              Menu Resmi LiChick
+              Menu LiChick
             </span>
             <h2 className="font-display font-bold text-2xl sm:text-4xl text-brand-dark">
               Friesmoy &amp; Macmoy
