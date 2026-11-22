@@ -518,7 +518,7 @@ export function StorefrontClient({ initialQuota = null }: StorefrontClientProps)
                 className="grid grid-cols-1 md:grid-cols-12 items-stretch"
               >
                 {/* Panel Foto Produk */}
-                <div className="md:col-span-4 lg:col-span-4 bg-lichick-poster p-4 sm:p-5 flex flex-col items-center justify-between gap-2">
+                <div className="md:col-span-4 lg:col-span-4 bg-lichick-poster p-4 flex flex-col items-center justify-between gap-1">
                   <div className="w-full flex items-center justify-start">
                     <span className="price-splat font-display font-bold text-white text-sm px-3.5 py-1.5">
                       {product.priceShort}
@@ -528,7 +528,7 @@ export function StorefrontClient({ initialQuota = null }: StorefrontClientProps)
                   <img
                     src={product.imageUrl}
                     alt={product.name}
-                    className="h-[145px] sm:h-[160px] w-auto object-contain my-1"
+                    className="h-[185px] sm:h-[205px] w-auto object-contain -my-1"
                   />
 
                   <div className="w-full flex items-center justify-between text-[11px] font-bold text-orange-100">
