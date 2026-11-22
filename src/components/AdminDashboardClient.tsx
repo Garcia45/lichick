@@ -33,6 +33,25 @@ import type {
 
 type FilterKey = "all" | "pending_payment" | OrderStatus;
 
+function extractDriveFileId(rawUrl: string): string | null {
+  const s = String(rawUrl || "").trim();
+  const byParam = s.match(/[?&]id=([A-Za-z0-9_-]{10,100})/);
+  if (byParam) return byParam[1];
+  const byPath = s.match(/\/d\/([A-Za-z0-9_-]{10,100})/);
+  if (byPath) return byPath[1];
+  return null;
+}
+
+function getProofImageSrc(rawUrl: string): string {
+  const s = String(rawUrl || "").trim();
+  if (!s) return "";
+  const driveId = extractDriveFileId(s);
+  if (driveId) {
+    return `/api/admin/proof?id=${encodeURIComponent(driveId)}`;
+  }
+  return s;
+}
+
 const FILTER_TABS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "Semua" },
   { key: "pending_payment", label: "Cek Bukti Bayar" },
@@ -715,21 +734,18 @@ export function AdminDashboardClient() {
                 {proofOrder.payment_proof_url ? (
                   <>
                     <img
-                      src={proofOrder.payment_proof_url}
+                      src={getProofImageSrc(proofOrder.payment_proof_url)}
                       alt={`Bukti Pembayaran ${proofOrder.order_number}`}
-                      referrerPolicy="no-referrer"
                       className="max-h-[42vh] w-auto object-contain rounded-lg"
                     />
-                    {/^https?:\/\//i.test(proofOrder.payment_proof_url) && (
-                      <a
-                        href={proofOrder.payment_proof_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] font-semibold text-brand-orange underline"
-                      >
-                        Buka Foto Bukti di Tab Baru
-                      </a>
-                    )}
+                    <a
+                      href={getProofImageSrc(proofOrder.payment_proof_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-semibold text-brand-orange underline"
+                    >
+                      Buka Foto Bukti di Tab Baru
+                    </a>
                   </>
                 ) : (
                   <p className="py-10 text-xs text-brand-muted">
