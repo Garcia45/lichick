@@ -135,7 +135,6 @@ export function TrackOrderClient() {
   const [query, setQuery] = useState(initialTicket);
   const [storedWaUrl, setStoredWaUrl] = useState("");
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [searched, setSearched] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [order, setOrder] = useState<OrderRecord | null>(null);
@@ -147,9 +146,7 @@ export function TrackOrderClient() {
     async (ticket: string, opts?: { silent?: boolean }) => {
       const code = ticket.trim().toUpperCase();
       if (!code) return;
-      if (opts?.silent) {
-        setRefreshing(true);
-      } else {
+      if (!opts?.silent) {
         setLoading(true);
         setSearched(true);
         setErrorMsg("");
@@ -179,7 +176,6 @@ export function TrackOrderClient() {
         }
       } finally {
         setLoading(false);
-        setRefreshing(false);
       }
     },
     []
@@ -408,35 +404,32 @@ export function TrackOrderClient() {
             </div>
           )}
 
-          {/* Tombol Aksi Utama Bentuk Pill (Seperti Referensi) */}
+          {/* Tombol Aksi Utama (Khusus Konfirmasi / Bantuan WhatsApp, Status Dipantau Otomatis) */}
           <div className="space-y-3 pt-1">
-            {justOrdered || order.payment_status === "ditolak" ? (
-              <a
-                href={waHelpUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`w-full min-h-[48px] px-6 rounded-full font-display font-bold text-sm sm:text-base text-white flex items-center justify-center transition-colors ${
-                  order.payment_status === "ditolak"
-                    ? "bg-red-600 hover:bg-red-700"
-                    : "bg-brand-orange hover:bg-brand-orange-hover"
-                }`}
-              >
-                {order.payment_status === "ditolak"
-                  ? "Konfirmasi Ulang via WhatsApp"
-                  : "Kirim Konfirmasi ke WhatsApp"}
-              </a>
-            ) : (
-              <button
-                type="button"
-                disabled={refreshing}
-                onClick={() => fetchTicket(order.order_number, { silent: true })}
-                className="w-full min-h-[48px] px-6 rounded-full bg-brand-orange hover:bg-brand-orange-hover disabled:opacity-60 text-white font-display font-bold text-sm sm:text-base cursor-pointer transition-colors"
-              >
-                {refreshing ? "Memperbarui Status..." : "Perbarui Status Terbaru"}
-              </button>
-            )}
+            <a
+              href={waHelpUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`w-full min-h-[48px] px-6 rounded-full font-display font-bold text-sm sm:text-base text-white flex items-center justify-center transition-colors ${
+                order.payment_status === "ditolak"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : justOrdered
+                  ? "bg-brand-orange hover:bg-brand-orange-hover"
+                  : "bg-emerald-700 hover:bg-emerald-800"
+              }`}
+            >
+              {order.payment_status === "ditolak"
+                ? "Konfirmasi Ulang via WhatsApp"
+                : justOrdered
+                ? "Kirim Konfirmasi ke WhatsApp"
+                : "Hubungi Admin via WhatsApp"}
+            </a>
 
-            {/* Tautan Expandable "Lihat rincian pesanan" ala Referensi */}
+            <p className="text-[11px] text-center text-brand-muted">
+              Status diperbarui otomatis mengikuti validasi dari admin.
+            </p>
+
+            {/* Tautan Expandable "Lihat rincian pesanan" */}
             <div className="flex items-center justify-center gap-4 text-xs sm:text-sm font-bold">
               <button
                 type="button"
@@ -528,27 +521,6 @@ export function TrackOrderClient() {
                 <span className="font-display text-brand-orange text-lg sm:text-xl tabular-nums">
                   {formatRupiah(order.total_amount)}
                 </span>
-              </div>
-
-              <div className="pt-2 flex flex-col sm:flex-row gap-2">
-                <a
-                  href={waHelpUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 min-h-[42px] px-4 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center justify-center transition-colors"
-                >
-                  Hubungi Admin via WhatsApp
-                </a>
-                <button
-                  type="button"
-                  disabled={refreshing}
-                  onClick={() =>
-                    fetchTicket(order.order_number, { silent: true })
-                  }
-                  className="min-h-[42px] px-4 rounded-xl bg-white border border-brand-border hover:border-brand-orange text-xs font-bold text-brand-dark cursor-pointer transition-colors"
-                >
-                  {refreshing ? "Memuat..." : "Refresh"}
-                </button>
               </div>
             </div>
           )}
