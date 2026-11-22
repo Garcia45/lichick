@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Fredoka, Permanent_Marker, Poppins } from "next/font/google";
+import { CartUiProvider } from "@/components/CartUiContext";
 import { Navbar } from "@/components/Navbar";
 import { HiddenAdminAccess } from "@/components/HiddenAdminAccess";
 import { STORE_CONFIG } from "@/config/store";
@@ -49,29 +50,31 @@ export default function RootLayout({
       className={`${poppins.variable} ${fredoka.variable} ${permanentMarker.variable}`}
     >
       <body className="min-h-screen bg-brand-paper text-brand-dark selection:bg-brand-orange selection:text-white flex flex-col">
-        <Navbar />
-        <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28">
-          {children}
-        </main>
-        <footer className="w-full border-t border-brand-border bg-white">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-xs text-brand-muted flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <HiddenAdminAccess />
-              <span>Open Pre Order Friesmoy &amp; Macmoy</span>
+        <CartUiProvider>
+          <Navbar />
+          <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-20">
+            {children}
+          </main>
+          <footer className="w-full border-t border-brand-border bg-white">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-xs text-brand-muted flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <HiddenAdminAccess />
+                <span>Open Pre Order Friesmoy &amp; Macmoy</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 font-semibold">
+                <span>WhatsApp: {STORE_CONFIG.adminWhatsAppDisplay}</span>
+                <a
+                  href={STORE_CONFIG.instagramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-orange hover:underline"
+                >
+                  Instagram: {STORE_CONFIG.instagramHandle}
+                </a>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 font-semibold">
-              <span>WhatsApp: {STORE_CONFIG.adminWhatsAppDisplay}</span>
-              <a
-                href={STORE_CONFIG.instagramUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-brand-orange hover:underline"
-              >
-                Instagram: {STORE_CONFIG.instagramHandle}
-              </a>
-            </div>
-          </div>
-        </footer>
+          </footer>
+        </CartUiProvider>
       </body>
     </html>
   );

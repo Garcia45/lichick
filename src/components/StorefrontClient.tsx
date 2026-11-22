@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCartUi } from "@/components/CartUiContext";
 import { MenuHighlightStage } from "@/components/MenuHighlightStage";
 import {
   DEFAULT_QUOTAS,
@@ -28,6 +29,8 @@ interface CartEntry {
 }
 
 export function StorefrontClient() {
+  const { cartOpen, setCartOpen, syncCartSummary } = useCartUi();
+
   const [highlightedProductId, setHighlightedProductId] = useState(
     MENU_PRODUCTS[0].id
   );
@@ -80,15 +83,19 @@ export function StorefrontClient() {
   };
 
   useEffect(() => {
-    if (!drawerOpen) return;
+    if (!drawerOpen && !cartOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !submitting) {
-        setDrawerOpen(false);
+      if (e.key === "Escape") {
+        if (drawerOpen && !submitting) {
+          setDrawerOpen(false);
+        } else if (cartOpen) {
+          setCartOpen(false);
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [drawerOpen, submitting]);
+  }, [drawerOpen, cartOpen, submitting, setCartOpen]);
 
   const handlePaymentProofChange = async (
     e: React.ChangeEvent<HTMLInputElement>
@@ -198,6 +205,10 @@ export function StorefrontClient() {
     () => cartItems.reduce((sum, item) => sum + item.subtotal, 0),
     [cartItems]
   );
+
+  useEffect(() => {
+    syncCartSummary(totalPortions, totalPrice);
+  }, [totalPortions, totalPrice, syncCartSummary]);
 
   // Stok global keseluruhan PO (default 25 porsi, bebas campur semua menu)
   const maxTotalQuota = storeConfig.quotas.total ?? DEFAULT_TOTAL_QUOTA;
@@ -428,83 +439,86 @@ export function StorefrontClient() {
               </strong>
             </span>
             {totalPortions > 0 && (
-              <span className="text-brand-orange font-bold">
-                Di Keranjang: {totalPortions} Porsi
-              </span>
+              <button
+                type="button"
+                onClick={() => setCartOpen(true)}
+                className="text-brand-orange font-bold underline cursor-pointer"
+              >
+                Lihat Keranjang ({totalPortions} Porsi)
+              </button>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* KOLOM KIRI (8 KOLOM): DAFTAR MENU */}
-          <div className="lg:col-span-8 divide-y divide-brand-border bg-white rounded-2xl border border-brand-border overflow-hidden">
-            {visibleProducts.map((product) => {
-              const entry = cart[product.id] || {
-                qty: 0,
-                variant: product.variants[0] || "",
-                notes: "",
-              };
+        {/* DAFTAR MENU LEBAR PENUH (TANPA TERPOTONG SIDEBAR KERANJANG) */}
+        <div className="divide-y divide-brand-border bg-white rounded-2xl border border-brand-border overflow-hidden">
+          {visibleProducts.map((product) => {
+            const entry = cart[product.id] || {
+              qty: 0,
+              variant: product.variants[0] || "",
+              notes: "",
+            };
 
-              return (
-                <article
-                  key={product.id}
-                  className="grid grid-cols-1 md:grid-cols-12 items-stretch"
-                >
-                  {/* Panel Foto Produk */}
-                  <div className="md:col-span-5 bg-lichick-poster p-5 flex flex-col items-center justify-between min-h-[230px] sm:min-h-[255px]">
-                    <div className="w-full flex items-center justify-between gap-2">
-                      <span className="price-splat font-display font-bold text-white text-sm px-3.5 py-1.5">
-                        {product.priceShort}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setHighlightedProductId(product.id);
-                          document
-                            .getElementById("highlight-menu")
-                            ?.scrollIntoView({ behavior: "smooth" });
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-brand-dark text-white hover:bg-black text-[11px] font-bold cursor-pointer transition-colors"
-                      >
-                        Sorot di Atas
-                      </button>
-                    </div>
-
-                    <img
-                      src={product.imageUrl}
-                      alt={product.name}
-                      className="h-[175px] sm:h-[195px] w-auto object-contain my-2"
-                    />
-
-                    <div className="w-full flex items-center justify-between text-[11px] font-bold text-orange-100">
-                      <span>{product.badge}</span>
-                      <span className="tabular-nums">
-                        {availableLeft > 0
-                          ? `Sisa PO ${availableLeft}/${maxTotalQuota}`
-                          : "Kuota PO Penuh"}
-                      </span>
-                    </div>
+            return (
+              <article
+                key={product.id}
+                className="grid grid-cols-1 md:grid-cols-12 items-stretch"
+              >
+                {/* Panel Foto Produk */}
+                <div className="md:col-span-4 lg:col-span-4 bg-lichick-poster p-5 sm:p-6 flex flex-col items-center justify-between min-h-[230px] sm:min-h-[260px]">
+                  <div className="w-full flex items-center justify-between gap-2">
+                    <span className="price-splat font-display font-bold text-white text-sm px-3.5 py-1.5">
+                      {product.priceShort}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHighlightedProductId(product.id);
+                        document
+                          .getElementById("highlight-menu")
+                          ?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-brand-dark text-white hover:bg-black text-[11px] font-bold cursor-pointer transition-colors"
+                    >
+                      Sorot di Atas
+                    </button>
                   </div>
 
-                  {/* Detail Menu & Kontrol Jumlah */}
-                  <div className="md:col-span-7 p-5 flex flex-col justify-between gap-4">
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-display font-bold text-xl sm:text-2xl text-brand-dark">
-                              {product.baseTitle}
-                            </h3>
-                            {product.edition === "GERAH" ? (
-                              <span className="gerah-splat font-gerah text-brand-gerah text-xs px-3 py-0.5">
-                                GERAH
-                              </span>
-                            ) : (
-                              <span className="px-2.5 py-0.5 rounded bg-brand-surface text-brand-deep font-display font-bold text-xs uppercase">
-                                Original
-                              </span>
-                            )}
-                          </div>
+                  <img
+                    src={product.imageUrl}
+                    alt={product.name}
+                    className="h-[175px] sm:h-[200px] w-auto object-contain my-2"
+                  />
+
+                  <div className="w-full flex items-center justify-between text-[11px] font-bold text-orange-100">
+                    <span>{product.badge}</span>
+                    <span className="tabular-nums">
+                      {availableLeft > 0
+                        ? `Sisa PO ${availableLeft}/${maxTotalQuota}`
+                        : "Kuota PO Penuh"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Detail Menu & Kontrol Jumlah */}
+                <div className="md:col-span-8 lg:col-span-8 p-5 sm:p-6 flex flex-col justify-between gap-4">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <h3 className="font-display font-bold text-xl sm:text-2xl text-brand-dark">
+                            {product.baseTitle}
+                          </h3>
+                          {product.edition === "GERAH" ? (
+                            <span className="gerah-splat font-gerah text-brand-gerah text-xs px-3 py-0.5 tracking-wider">
+                              GERAH
+                            </span>
+                          ) : (
+                            <span className="original-splat font-gerah text-brand-amber text-xs px-3 py-0.5 tracking-wider">
+                              ORIGINAL
+                            </span>
+                          )}
+                        </div>
                           <p className="text-xs font-semibold text-brand-orange mt-0.5">
                             {product.tagline}
                           </p>
@@ -630,184 +644,191 @@ export function StorefrontClient() {
                 </article>
               );
             })}
-          </div>
-
-          {/* KOLOM KANAN (4 KOLOM, STICKY): LIVE SIDEBAR KERANJANG PESANAN */}
-          <aside
-            aria-label="Keranjang Pesanan"
-            className="lg:col-span-4 lg:sticky lg:top-28 bg-white rounded-2xl border border-brand-border overflow-hidden"
-          >
-            <div className="px-5 py-4 bg-brand-dark text-white flex items-center justify-between gap-2">
-              <div>
-                <span className="text-[10px] uppercase tracking-widest text-brand-amber font-bold block">
-                  Ringkasan Live
-                </span>
-                <h3 className="font-display font-bold text-lg leading-tight">
-                  Keranjang Pesanan
-                </h3>
-              </div>
-              <span className="px-2.5 py-1 rounded-lg bg-brand-orange text-white font-display font-bold text-xs tabular-nums">
-                {totalPortions} Item
-              </span>
-            </div>
-
-            <div className="p-5 space-y-4">
-              {cartItems.length === 0 ? (
-                <div className="py-8 text-center space-y-2 border border-dashed border-brand-border rounded-xl px-4 bg-brand-paper">
-                  <p className="font-display font-bold text-base text-brand-dark">
-                    Keranjang Masih Kosong
-                  </p>
-                  <p className="text-xs text-brand-muted leading-relaxed">
-                    Pilih Friesmoy atau Macmoy di daftar menu untuk mulai
-                    menyusun pesananmu.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div className="divide-y divide-brand-border max-h-[320px] overflow-y-auto pr-1">
-                    {cartItems.map(({ product, entry, subtotal }) => {
-                      return (
-                        <div
-                          key={product.id}
-                          className="py-3 first:pt-0 last:pb-0 flex items-start gap-3"
-                        >
-                          <img
-                            src={product.imageUrl}
-                            alt={product.name}
-                            className="size-13 rounded-lg bg-brand-surface p-1 object-contain shrink-0 border border-brand-border"
-                          />
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="font-bold text-xs sm:text-sm text-brand-dark leading-snug">
-                                {product.name}
-                              </span>
-                              <span className="font-bold text-xs text-brand-orange tabular-nums shrink-0">
-                                {formatRupiah(subtotal)}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-brand-muted leading-tight">
-                              {entry.variant}
-                              {entry.notes ? ` / ${entry.notes}` : ""}
-                            </p>
-
-                            {/* Kontrol tambah / kurang langsung di sidebar */}
-                            <div className="flex items-center justify-between pt-1">
-                              <div className="inline-flex items-center gap-1 bg-brand-paper border border-brand-border rounded-lg p-0.5">
-                                <button
-                                  type="button"
-                                  aria-label={`Kurangi ${product.name} dari keranjang`}
-                                  onClick={() => updateQty(product.id, -1)}
-                                  className="size-7 rounded bg-white hover:bg-brand-surface text-brand-dark font-bold text-sm cursor-pointer"
-                                >
-                                  -
-                                </button>
-                                <span className="w-7 text-center font-bold text-xs text-brand-dark tabular-nums">
-                                  {entry.qty}
-                                </span>
-                                <button
-                                  type="button"
-                                  aria-label={`Tambah ${product.name} di keranjang`}
-                                  disabled={availableLeft <= 0}
-                                  onClick={() => updateQty(product.id, 1)}
-                                  className="size-7 rounded bg-brand-orange hover:bg-brand-orange-hover disabled:bg-zinc-300 text-white font-bold text-sm cursor-pointer"
-                                >
-                                  +
-                                </button>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => updateQty(product.id, -entry.qty)}
-                                className="text-[11px] font-semibold text-brand-muted hover:text-red-700 cursor-pointer"
-                              >
-                                Hapus
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Catatan Bebas Langsung di Sidebar */}
-                  <div className="pt-3 border-t border-brand-border space-y-1.5">
-                    <label
-                      htmlFor="sidebar-notes"
-                      className="block text-[11px] font-bold uppercase tracking-wider text-brand-muted"
-                    >
-                      Catatan Bebas (Opsional)
-                    </label>
-                    <textarea
-                      id="sidebar-notes"
-                      rows={2}
-                      value={orderNotes}
-                      onChange={(e) => setOrderNotes(e.target.value)}
-                      placeholder="Contoh: minta sendok 2, saus dipisah semua, titip di satpam..."
-                      className="w-full p-2.5 rounded-lg bg-brand-paper border border-brand-border text-xs text-brand-dark focus:outline-none focus:ring-2 focus:ring-brand-orange"
-                    />
-                  </div>
-
-                  {/* Total & Tombol Checkout */}
-                  <div className="pt-3 border-t border-brand-border space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-brand-muted">
-                        Total Pembayaran
-                      </span>
-                      <span className="font-display font-bold text-2xl text-brand-orange tabular-nums">
-                        {formatRupiah(totalPrice)}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setErrorMsg("");
-                        setLastOrder(null);
-                        setDrawerOpen(true);
-                      }}
-                      className="w-full min-h-[48px] px-5 rounded-xl bg-brand-orange hover:bg-brand-orange-hover text-white font-display font-bold text-sm sm:text-base cursor-pointer transition-colors"
-                    >
-                      Checkout Pesanan
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </aside>
         </div>
       </section>
 
-      {/* 3. MOBILE / TABLET FIXED BOTTOM BAR (< lg, karena di desktop sudah ada Sidebar Kanan) */}
-      {totalPortions > 0 && (
-        <div className="lg:hidden fixed bottom-3 inset-x-3 sm:inset-x-6 z-40">
-          <div className="bg-brand-dark text-white rounded-2xl p-3.5 border border-brand-charcoal shadow-2xl flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <span className="size-10 rounded-xl bg-brand-orange flex items-center justify-center text-white font-display font-bold text-base shrink-0 tabular-nums">
-                {totalPortions}
+      {/* 3. PANEL SLIDE-OVER KERANJANG PESANAN (MUNCUL ~SEPEREMPAT LAYAR DARI KANAN VIA TOMBOL NAVBAR) */}
+      <div
+        aria-hidden={!cartOpen}
+        className={`fixed inset-0 z-50 transition-opacity duration-200 ${
+          cartOpen
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
+        }`}
+      >
+        {/* Backdrop solid gelap matte (tanpa backdrop-blur) */}
+        <div
+          onClick={() => setCartOpen(false)}
+          className="absolute inset-0 bg-black/50"
+        />
+
+        {/* Drawer kanan ~seperempat layar (max 380px di desktop, penuh di HP) */}
+        <aside
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keranjang Pesanan"
+          className={`absolute inset-y-0 right-0 w-full max-w-[380px] bg-white border-l border-brand-border flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
+            cartOpen ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
+          <div className="px-5 py-4 bg-brand-dark text-white flex items-center justify-between gap-3 shrink-0">
+            <div>
+              <span className="text-[10px] uppercase tracking-widest text-brand-amber font-bold block">
+                Ringkasan Pesanan
               </span>
-              <div className="min-w-0">
-                <span className="text-[11px] text-zinc-400 block">
-                  Total Pesanan
+              <h3 className="font-display font-bold text-lg leading-tight">
+                Keranjang ({totalPortions} Item)
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCartOpen(false)}
+              className="min-h-[38px] px-3 rounded-lg bg-brand-charcoal hover:bg-zinc-700 text-white text-xs font-bold cursor-pointer transition-colors"
+            >
+              Tutup
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {cartItems.length === 0 ? (
+              <div className="py-12 text-center space-y-3 border border-dashed border-brand-border rounded-xl px-5 bg-brand-paper">
+                <p className="font-display font-bold text-base text-brand-dark">
+                  Keranjang Masih Kosong
+                </p>
+                <p className="text-xs text-brand-muted leading-relaxed">
+                  Pilih Friesmoy atau Macmoy di daftar menu untuk mulai menyusun
+                  pesananmu.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCartOpen(false);
+                    document
+                      .getElementById("katalog-menu")
+                      ?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                  className="min-h-[40px] px-4 rounded-xl bg-brand-orange hover:bg-brand-orange-hover text-white text-xs font-bold cursor-pointer transition-colors"
+                >
+                  Pilih Menu Sekarang
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="divide-y divide-brand-border">
+                  {cartItems.map(({ product, entry, subtotal }) => (
+                    <div
+                      key={product.id}
+                      className="py-3.5 first:pt-0 last:pb-0 flex items-start gap-3"
+                    >
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="size-14 rounded-lg bg-brand-surface p-1 object-contain shrink-0 border border-brand-border"
+                      />
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-bold text-sm text-brand-dark leading-snug">
+                            {product.name}
+                          </span>
+                          <span className="font-bold text-xs text-brand-orange tabular-nums shrink-0">
+                            {formatRupiah(subtotal)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-brand-muted leading-tight">
+                          {entry.variant}
+                          {entry.notes ? ` / ${entry.notes}` : ""}
+                        </p>
+
+                        {/* Kontrol tambah / kurang langsung di drawer keranjang */}
+                        <div className="flex items-center justify-between pt-1.5">
+                          <div className="inline-flex items-center gap-1 bg-brand-paper border border-brand-border rounded-lg p-0.5">
+                            <button
+                              type="button"
+                              aria-label={`Kurangi ${product.name} dari keranjang`}
+                              onClick={() => updateQty(product.id, -1)}
+                              className="size-8 rounded bg-white hover:bg-brand-surface text-brand-dark font-bold text-sm cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <span className="w-7 text-center font-bold text-xs text-brand-dark tabular-nums">
+                              {entry.qty}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label={`Tambah ${product.name} di keranjang`}
+                              disabled={availableLeft <= 0}
+                              onClick={() => updateQty(product.id, 1)}
+                              className="size-8 rounded bg-brand-orange hover:bg-brand-orange-hover disabled:bg-zinc-300 text-white font-bold text-sm cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => updateQty(product.id, -entry.qty)}
+                            className="text-[11px] font-semibold text-brand-muted hover:text-red-700 cursor-pointer"
+                          >
+                            Hapus
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Catatan Bebas Langsung di Drawer */}
+                <div className="pt-4 border-t border-brand-border space-y-1.5">
+                  <label
+                    htmlFor="drawer-order-notes"
+                    className="block text-[11px] font-bold uppercase tracking-wider text-brand-muted"
+                  >
+                    Catatan Bebas (Opsional)
+                  </label>
+                  <textarea
+                    id="drawer-order-notes"
+                    rows={2}
+                    value={orderNotes}
+                    onChange={(e) => setOrderNotes(e.target.value)}
+                    placeholder="Contoh: minta sendok 2, saus dipisah semua, titip di satpam..."
+                    className="w-full p-2.5 rounded-lg bg-brand-paper border border-brand-border text-xs text-brand-dark focus:outline-none focus:ring-2 focus:ring-brand-orange"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Footer Tetap: Total Harga + Tombol Checkout */}
+          {cartItems.length > 0 && (
+            <div className="p-5 border-t border-brand-border bg-brand-paper space-y-3 shrink-0">
+              <div className="flex items-center justify-between text-xs text-brand-muted">
+                <span>Pengambilan</span>
+                <strong className="text-brand-dark">{pickupDay}</strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-brand-muted">
+                  Total Harga ({totalPortions} Porsi)
                 </span>
-                <span className="font-display font-bold text-lg text-brand-amber tabular-nums">
+                <span className="font-display font-bold text-2xl text-brand-orange tabular-nums">
                   {formatRupiah(totalPrice)}
                 </span>
               </div>
-            </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setErrorMsg("");
-                setLastOrder(null);
-                setDrawerOpen(true);
-              }}
-              className="min-h-[44px] px-5 rounded-xl bg-brand-orange hover:bg-brand-orange-hover text-white font-display font-bold text-sm cursor-pointer shrink-0 transition-colors"
-            >
-              Checkout
-            </button>
-          </div>
-        </div>
-      )}
+              <button
+                type="button"
+                onClick={() => {
+                  setCartOpen(false);
+                  setErrorMsg("");
+                  setLastOrder(null);
+                  setDrawerOpen(true);
+                }}
+                className="w-full min-h-[48px] px-5 rounded-xl bg-brand-orange hover:bg-brand-orange-hover text-white font-display font-bold text-sm sm:text-base cursor-pointer transition-colors"
+              >
+                Checkout Pesanan
+              </button>
+            </div>
+          )}
+        </aside>
+      </div>
 
       {/* 4. CHECKOUT MODAL (RINCIAN + GAMBAR + QRIS + HARI & JAM + WHATSAPP) */}
       {drawerOpen && (
