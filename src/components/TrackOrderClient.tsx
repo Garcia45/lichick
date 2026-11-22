@@ -91,7 +91,7 @@ export function TrackOrderClient() {
           <p className="text-xs sm:text-sm text-brand-muted">
             Masukkan kode pesananmu (contoh:{" "}
             <code className="font-mono font-bold text-brand-dark">
-              LCK-261122-4821
+              LCK-261122-7K4M9P
             </code>
             ) untuk melihat status pembayaran dan progres dapur dari admin.
           </p>

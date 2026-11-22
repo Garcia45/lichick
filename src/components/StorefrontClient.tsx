@@ -280,14 +280,12 @@ export function StorefrontClient() {
     }
 
     setSubmitting(true);
-    const orderNumber = generateOrderNumber();
 
     try {
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          order_number: orderNumber,
           pickup_day: pickupDay,
           pickup_slot: "-",
           customer_name: customerName.trim(),
@@ -307,6 +305,9 @@ export function StorefrontClient() {
       if (!res.ok || !result.ok) {
         throw new Error(result.error || "Gagal menyimpan pesanan");
       }
+
+      const orderNumber: string =
+        result.order?.order_number || generateOrderNumber();
 
       setTotalSold((prev) => prev + totalPortions);
 

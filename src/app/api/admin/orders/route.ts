@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminAuthenticated } from "@/lib/admin-auth";
+import { verifySameOrigin } from "@/lib/request-security";
 import {
   deleteOrderRecord,
   fetchAdminDashboardData,
@@ -41,6 +42,13 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { ok: false, error: "Origin permintaan tidak diizinkan." },
+      { status: 403 }
+    );
+  }
+
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },
@@ -98,6 +106,13 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { ok: false, error: "Origin permintaan tidak diizinkan." },
+      { status: 403 }
+    );
+  }
+
   if (!(await isAdminAuthenticated())) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },

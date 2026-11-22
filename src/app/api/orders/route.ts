@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_TOTAL_QUOTA, MENU_PRODUCTS, STORE_CONFIG } from "@/config/store";
-import { createOrderRecord, fetchPublicQuotas } from "@/lib/sheets-client";
 import { generateOrderNumber } from "@/lib/format";
+import {
+  checkSlidingRateLimit,
+  getTrustedClientIp,
+  verifySameOrigin,
+} from "@/lib/request-security";
+import { createOrderRecord, fetchPublicQuotas } from "@/lib/sheets-client";
 import type { OrderItem } from "@/types/order";
 
 const PRODUCT_BY_ID = new Map(MENU_PRODUCTS.map((p) => [p.id, p]));
@@ -21,6 +26,30 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!verifySameOrigin(req)) {
+      return NextResponse.json(
+        { ok: false, error: "Origin permintaan tidak diizinkan." },
+        { status: 403 }
+      );
+    }
+
+    const clientIp = getTrustedClientIp(req);
+    const rate = checkSlidingRateLimit({
+      bucket: "create_order",
+      key: clientIp,
+      maxRequests: 8,
+      windowMs: 10 * 60 * 1000,
+    });
+    if (!rate.allowed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Terlalu banyak pengiriman pesanan dari perangkat ini. Tunggu beberapa menit lalu coba lagi.",
+        },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
 
     const customerName = String(body.customer_name || "").trim();
@@ -140,14 +169,14 @@ export async function POST(req: NextRequest) {
 
     const totalPortions = validItems.reduce((sum, it) => sum + it.quantity, 0);
     const totalAmount = validItems.reduce((sum, it) => sum + it.subtotal, 0);
-    const orderNumber = String(body.order_number || generateOrderNumber())
-      .trim()
-      .toUpperCase();
+
+    // Selalu buat kode pesanan di sisi server (anti spoofing / duplikasi kode pesanan dari klien)
+    const orderNumber = generateOrderNumber();
 
     const result = await createOrderRecord({
       order_number: orderNumber,
-      pickup_day: pickupDay,
-      pickup_slot: pickupSlot,
+      pickup_day: pickupDay.slice(0, 40),
+      pickup_slot: pickupSlot.slice(0, 40),
       customer_name: customerName.slice(0, 80),
       customer_whatsapp: customerWhatsapp.slice(0, 24),
       delivery_method: deliveryMethod,

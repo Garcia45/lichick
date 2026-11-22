@@ -13,6 +13,24 @@ export function normalizeWaPhone(raw: string): string {
   return digits;
 }
 
+const ORDER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function randomCodeSuffix(length = 6): string {
+  const bytes = new Uint8Array(length);
+  if (typeof globalThis.crypto !== "undefined" && globalThis.crypto.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += ORDER_CODE_ALPHABET[bytes[i] % ORDER_CODE_ALPHABET.length];
+  }
+  return out;
+}
+
 export function generateOrderNumber(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",
@@ -23,8 +41,7 @@ export function generateOrderNumber(): string {
   const yy = parts.find((p) => p.type === "year")?.value || "26";
   const mm = parts.find((p) => p.type === "month")?.value || "01";
   const dd = parts.find((p) => p.type === "day")?.value || "01";
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `LCK-${yy}${mm}${dd}-${rand}`;
+  return `LCK-${yy}${mm}${dd}-${randomCodeSuffix(6)}`;
 }
 
 export function formatPickupSchedule(

@@ -9,22 +9,21 @@ import {
   recordFailedLogin,
   verifyAdminSecret,
 } from "@/lib/admin-auth";
-
-function getClientKey(req: NextRequest): string {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  const realIp = req.headers.get("x-real-ip")?.trim();
-  return realIp || "local";
-}
+import {
+  checkSlidingRateLimit,
+  getTrustedClientIp,
+  verifySameOrigin,
+} from "@/lib/request-security";
 
 function isHttpsRequest(req: NextRequest): boolean {
   return (
     req.nextUrl.protocol === "https:" ||
     req.headers.get("x-forwarded-proto") === "https"
   );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function GET() {
@@ -45,7 +44,14 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const clientKey = getClientKey(req);
+    if (!verifySameOrigin(req)) {
+      return NextResponse.json(
+        { ok: false, error: "Origin permintaan tidak diizinkan." },
+        { status: 403 }
+      );
+    }
+
+    const clientKey = getTrustedClientIp(req);
     const limit = checkLoginRateLimit(clientKey);
     if (!limit.allowed) {
       return NextResponse.json(
@@ -61,12 +67,24 @@ export async function POST(req: NextRequest) {
     const secret = String(body.password ?? body.pin ?? "");
 
     if (!verifyAdminSecret(secret)) {
+      // Perlambat respon gagal & batasi percobaan gagal global (tahan serangan brute-force lintas IP)
+      const globalFailLimit = checkSlidingRateLimit({
+        bucket: "admin_auth_global_fail",
+        key: "all",
+        maxRequests: 20,
+        windowMs: 15 * 60 * 1000,
+      });
+      await delay(450);
+
       const fail = recordFailedLogin(clientKey);
-      if (fail.locked) {
+      if (fail.locked || !globalFailLimit.allowed) {
         return NextResponse.json(
           {
             ok: false,
-            error: `Akses dikunci sementara selama ${fail.retryAfterMinutes} menit karena terlalu banyak percobaan salah.`,
+            error: `Akses dikunci sementara selama ${Math.max(
+              fail.retryAfterMinutes,
+              Math.ceil(globalFailLimit.retryAfterSeconds / 60)
+            )} menit karena terlalu banyak percobaan salah.`,
           },
           { status: 429 }
         );
@@ -106,6 +124,13 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  if (!verifySameOrigin(req)) {
+    return NextResponse.json(
+      { ok: false, error: "Origin permintaan tidak diizinkan." },
+      { status: 403 }
+    );
+  }
+
   const res = NextResponse.json({ ok: true, authenticated: false });
   res.cookies.set({
     name: ADMIN_COOKIE_NAME,
