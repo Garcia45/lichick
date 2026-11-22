@@ -40,11 +40,7 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     price: 18000,
     defaultQuota: 10,
     badge: "Pedas Favorit",
-    variants: [
-      "Saus Nashville Normal",
-      "Extra Saus Nashville",
-      "Saus Nashville Dipisah",
-    ],
+    variants: [],
     imageUrl: "/images/friesmoy-gerah.png",
   },
   {
@@ -60,11 +56,7 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     price: 20000,
     defaultQuota: 15,
     badge: "Signature Pedas",
-    variants: [
-      "Saus Nashville Normal",
-      "Extra Saus Nashville",
-      "Saus Nashville Dipisah",
-    ],
+    variants: [],
     imageUrl: "/images/macmoy-gerah.png",
   },
   {
@@ -80,7 +72,7 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     price: 18000,
     defaultQuota: 10,
     badge: "Original Gurih",
-    variants: ["Original Gurih", "Tambah Saus Sambal", "Tambah Mayo"],
+    variants: [],
     imageUrl: "/images/friesmoy-original.png",
   },
   {
@@ -96,7 +88,7 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     price: 20000,
     defaultQuota: 15,
     badge: "Original Creamy",
-    variants: ["Original Creamy Cheese", "Extra Keju", "Tambah Saus Sambal"],
+    variants: [],
     imageUrl: "/images/macmoy-original.png",
   },
 ];

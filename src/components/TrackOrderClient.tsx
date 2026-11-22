@@ -495,10 +495,9 @@ export function TrackOrderClient() {
                       <span className="text-brand-orange font-bold">
                         x{it.quantity}
                       </span>
-                      {it.variant ? (
+                      {it.variant || it.notes ? (
                         <span className="text-brand-muted text-xs block">
-                          {it.variant}
-                          {it.notes ? ` / ${it.notes}` : ""}
+                          {[it.variant, it.notes].filter(Boolean).join(" / ")}
                         </span>
                       ) : null}
                     </span>

@@ -545,33 +545,6 @@ export function StorefrontClient() {
                       <p className="text-xs sm:text-sm text-brand-muted leading-relaxed">
                         {product.description}
                       </p>
-
-                      <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-brand-muted block mb-1.5">
-                          Pilihan Saus / Request
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {product.variants.map((variant) => (
-                            <button
-                              key={variant}
-                              type="button"
-                              onClick={() =>
-                                setCart((prev) => ({
-                                  ...prev,
-                                  [product.id]: { ...entry, variant },
-                                }))
-                              }
-                              className={`min-h-[36px] px-2.5 py-1 rounded-lg text-xs font-bold border cursor-pointer transition-colors ${
-                                entry.variant === variant
-                                  ? "bg-brand-dark text-white border-brand-dark"
-                                  : "bg-brand-paper text-brand-dark border-brand-border hover:border-brand-orange"
-                              }`}
-                            >
-                              {variant}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                     </div>
 
                     <div className="space-y-2.5 pt-3.5 border-t border-brand-border">
@@ -747,10 +720,11 @@ export function StorefrontClient() {
                             {formatRupiah(subtotal)}
                           </span>
                         </div>
-                        <p className="text-[11px] text-brand-muted leading-tight">
-                          {entry.variant}
-                          {entry.notes ? ` / ${entry.notes}` : ""}
-                        </p>
+                        {entry.notes && (
+                          <p className="text-[11px] text-brand-muted leading-tight">
+                            {entry.notes}
+                          </p>
+                        )}
 
                         {/* Kontrol tambah / kurang langsung di drawer keranjang */}
                         <div className="flex items-center justify-between pt-1.5">
@@ -950,10 +924,11 @@ export function StorefrontClient() {
                                 x{entry.qty}
                               </span>
                             </span>
-                            <p className="text-[11px] text-brand-muted">
-                              {entry.variant}
-                              {entry.notes ? ` / ${entry.notes}` : ""}
-                            </p>
+                            {entry.notes && (
+                              <p className="text-[11px] text-brand-muted">
+                                {entry.notes}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <span className="font-bold text-sm text-brand-dark tabular-nums shrink-0">

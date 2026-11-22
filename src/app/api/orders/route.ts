@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       validItems.push({
         product_id: catalogProduct.id,
         name: catalogProduct.name,
-        variant: String(it.variant || catalogProduct.variants[0] || "").trim().slice(0, 80),
+        variant: "",
         quantity: safeQty,
         unit_price: catalogProduct.price,
         subtotal: safeQty * catalogProduct.price,
