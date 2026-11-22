@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCartUi } from "@/components/CartUiContext";
 import { MenuHighlightStage } from "@/components/MenuHighlightStage";
@@ -29,6 +30,7 @@ interface CartEntry {
 }
 
 export function StorefrontClient() {
+  const router = useRouter();
   const { cartOpen, setCartOpen, syncCartSummary } = useCartUi();
 
   const [highlightedProductId, setHighlightedProductId] = useState(
@@ -342,6 +344,13 @@ export function StorefrontClient() {
         trackUrl,
       });
 
+      try {
+        localStorage.setItem("lichick_last_order_code", orderNumber);
+        sessionStorage.setItem(`lichick_wa_url_${orderNumber}`, waUrl);
+      } catch {
+        // Abaikan jika browser memblokir storage
+      }
+
       setLastOrder({ orderNumber, waUrl });
 
       setCart((prev) => {
@@ -353,9 +362,14 @@ export function StorefrontClient() {
       });
       setOrderNotes("");
       clearPaymentProof();
+      setDrawerOpen(false);
+      setCartOpen(false);
 
-      showToast(`Pesanan ${orderNumber} & bukti bayar tercatat. Membuka WhatsApp.`);
+      showToast(`Pesanan ${orderNumber} tercatat. Membuka halaman status pesanan.`);
       window.open(waUrl, "_blank", "noopener,noreferrer");
+      router.push(
+        `/track?order_number=${encodeURIComponent(orderNumber)}&ordered=1`
+      );
     } catch (err) {
       setErrorMsg(
         err instanceof Error
