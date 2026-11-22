@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MenuHighlightStage } from "@/components/MenuHighlightStage";
-import { DEFAULT_QUOTAS, MENU_PRODUCTS, STORE_CONFIG } from "@/config/store";
+import {
+  DEFAULT_QUOTAS,
+  DEFAULT_TOTAL_QUOTA,
+  MENU_PRODUCTS,
+  STORE_CONFIG,
+} from "@/config/store";
 import {
   buildWhatsAppOrderUrl,
   formatRupiah,
@@ -11,7 +16,6 @@ import {
 } from "@/lib/format";
 import type {
   DeliveryMethod,
-  MenuBaseType,
   OrderItem,
   PublicQuotaResponse,
   StoreQuotaConfig,
@@ -31,10 +35,7 @@ export function StorefrontClient() {
     "ALL" | "GERAH" | "ORIGINAL"
   >("ALL");
 
-  const [soldByBase, setSoldByBase] = useState<Record<MenuBaseType, number>>({
-    mac: 0,
-    fries: 0,
-  });
+  const [totalSold, setTotalSold] = useState(0);
   const [storeConfig, setStoreConfig] = useState<StoreQuotaConfig>({
     store_open: true,
     quotas: { ...DEFAULT_QUOTAS },
@@ -161,12 +162,7 @@ export function StorefrontClient() {
       .then((res) => res.json())
       .then((data: PublicQuotaResponse) => {
         if (data.ok) {
-          if (data.sold_by_base) {
-            setSoldByBase({
-              mac: Number(data.sold_by_base.mac) || 0,
-              fries: Number(data.sold_by_base.fries) || 0,
-            });
-          }
+          setTotalSold(Number(data.total_sold) || 0);
           if (data.store_config) {
             setStoreConfig({
               store_open: data.store_config.store_open !== false,
@@ -179,28 +175,6 @@ export function StorefrontClient() {
         // fallback ke kuota default
       });
   }, []);
-
-  const cartByBase = useMemo(() => {
-    const totals: Record<MenuBaseType, number> = { mac: 0, fries: 0 };
-    MENU_PRODUCTS.forEach((p) => {
-      totals[p.baseType] += cart[p.id]?.qty || 0;
-    });
-    return totals;
-  }, [cart]);
-
-  const getBaseStockInfo = (baseType: MenuBaseType) => {
-    const maxQuota = storeConfig.quotas[baseType] ?? DEFAULT_QUOTAS[baseType];
-    const sold = soldByBase[baseType] ?? 0;
-    const remainingBeforeCart = Math.max(0, maxQuota - sold);
-    const inCart = cartByBase[baseType] ?? 0;
-    const availableLeft = Math.max(0, remainingBeforeCart - inCart);
-    return { maxQuota, sold, remainingBeforeCart, inCart, availableLeft };
-  };
-
-  const macStock = getBaseStockInfo("mac");
-  const friesStock = getBaseStockInfo("fries");
-  const totalMaxStock = macStock.maxQuota + friesStock.maxQuota;
-  const totalAvailableStock = macStock.availableLeft + friesStock.availableLeft;
 
   const visibleProducts = useMemo(() => {
     if (editionFilter === "ALL") return MENU_PRODUCTS;
@@ -225,19 +199,10 @@ export function StorefrontClient() {
     [cartItems]
   );
 
-  const highlightedQuota = useMemo(() => {
-    const prod =
-      MENU_PRODUCTS.find((p) => p.id === highlightedProductId) ||
-      MENU_PRODUCTS[0];
-    const maxQuota =
-      storeConfig.quotas[prod.baseType] ?? DEFAULT_QUOTAS[prod.baseType];
-    const sold = soldByBase[prod.baseType] ?? 0;
-    const inCart = cartByBase[prod.baseType] ?? 0;
-    return {
-      maxQuota,
-      remaining: Math.max(0, maxQuota - sold - inCart),
-    };
-  }, [cartByBase, highlightedProductId, soldByBase, storeConfig]);
+  // Stok global keseluruhan PO (default 25 porsi, bebas campur semua menu)
+  const maxTotalQuota = storeConfig.quotas.total ?? DEFAULT_TOTAL_QUOTA;
+  const remainingBeforeCart = Math.max(0, maxTotalQuota - totalSold);
+  const availableLeft = Math.max(0, remainingBeforeCart - totalPortions);
 
   const updateQty = (productId: string, delta: number) => {
     const product = MENU_PRODUCTS.find((p) => p.id === productId);
@@ -246,10 +211,6 @@ export function StorefrontClient() {
       showToast("Pre Order sedang ditutup sementara.");
       return;
     }
-    const maxBase =
-      storeConfig.quotas[product.baseType] ?? DEFAULT_QUOTAS[product.baseType];
-    const soldBase = soldByBase[product.baseType] ?? 0;
-    const remainingBase = Math.max(0, maxBase - soldBase);
 
     setCart((prev) => {
       const cur = prev[productId] || {
@@ -257,17 +218,15 @@ export function StorefrontClient() {
         variant: product.variants[0] || "",
         notes: "",
       };
-      const otherSameBaseQty = MENU_PRODUCTS.filter(
-        (p) => p.baseType === product.baseType && p.id !== productId
+      const otherItemsQty = MENU_PRODUCTS.filter(
+        (p) => p.id !== productId
       ).reduce((sum, p) => sum + (prev[p.id]?.qty || 0), 0);
-      const maxForItem = Math.max(0, remainingBase - otherSameBaseQty);
+      const maxForItem = Math.max(0, remainingBeforeCart - otherItemsQty);
       const nextQty = Math.max(0, Math.min(maxForItem, cur.qty + delta));
 
       if (delta > 0 && nextQty === cur.qty) {
         showToast(
-          `Batas stok ${
-            product.baseType === "mac" ? "Macmoy" : "Friesmoy"
-          } (${maxBase} porsi) sudah penuh.`
+          `Kuota Pre Order (${maxTotalQuota} porsi semua menu) sudah penuh.`
         );
       } else if (delta > 0 && nextQty > cur.qty) {
         showToast(`${product.name} (+${nextQty - cur.qty}) masuk keranjang`);
@@ -349,16 +308,7 @@ export function StorefrontClient() {
         throw new Error(result.error || "Gagal menyimpan pesanan");
       }
 
-      setSoldByBase((prev) => {
-        const next = { ...prev };
-        selectedItems.forEach((it) => {
-          const prod = MENU_PRODUCTS.find((p) => p.id === it.product_id);
-          if (prod) {
-            next[prod.baseType] = (next[prod.baseType] || 0) + it.quantity;
-          }
-        });
-        return next;
-      });
+      setTotalSold((prev) => prev + totalPortions);
 
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
@@ -422,8 +372,8 @@ export function StorefrontClient() {
         onSelectProduct={setHighlightedProductId}
         onQuickAdd={(id) => updateQty(id, 1)}
         storeOpen={storeConfig.store_open}
-        activeProductRemaining={highlightedQuota.remaining}
-        activeProductMax={highlightedQuota.maxQuota}
+        activeProductRemaining={availableLeft}
+        activeProductMax={maxTotalQuota}
       />
 
       {/* 2. KATALOG MENU (KIRI) + LIVE SIDEBAR KERANJANG PESANAN (KANAN) */}
@@ -466,28 +416,21 @@ export function StorefrontClient() {
 
         <div className="bg-white rounded-xl border border-brand-border px-4 py-3 flex flex-wrap items-center justify-between gap-2.5 text-xs">
           <div className="font-bold text-brand-dark">
-            Pengambilan:{" "}
+            Hari Pengambilan:{" "}
             <span className="text-brand-orange">{pickupDay}</span>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-semibold text-brand-muted tabular-nums">
             <span>
-              Total Stok PO:{" "}
+              Sisa Kuota PO (Semua Menu):{" "}
               <strong className="text-brand-dark">
-                Sisa {totalAvailableStock}/{totalMaxStock}
+                {availableLeft}/{maxTotalQuota} Porsi
               </strong>
             </span>
-            <span>
-              Macmoy:{" "}
-              <strong className="text-brand-dark">
-                {macStock.availableLeft}/{macStock.maxQuota}
-              </strong>
-            </span>
-            <span>
-              Friesmoy:{" "}
-              <strong className="text-brand-dark">
-                {friesStock.availableLeft}/{friesStock.maxQuota}
-              </strong>
-            </span>
+            {totalPortions > 0 && (
+              <span className="text-brand-orange font-bold">
+                Di Keranjang: {totalPortions} Porsi
+              </span>
+            )}
           </div>
         </div>
 
@@ -500,11 +443,6 @@ export function StorefrontClient() {
                 variant: product.variants[0] || "",
                 notes: "",
               };
-              const { maxQuota, availableLeft } = getBaseStockInfo(
-                product.baseType
-              );
-              const baseLabel =
-                product.baseType === "mac" ? "Macmoy" : "Friesmoy";
 
               return (
                 <article
@@ -541,8 +479,8 @@ export function StorefrontClient() {
                       <span>{product.badge}</span>
                       <span className="tabular-nums">
                         {availableLeft > 0
-                          ? `Stok ${baseLabel} ${availableLeft}/${maxQuota}`
-                          : `Stok ${baseLabel} Habis`}
+                          ? `Sisa PO ${availableLeft}/${maxTotalQuota}`
+                          : "Kuota PO Penuh"}
                       </span>
                     </div>
                   </div>
@@ -727,9 +665,6 @@ export function StorefrontClient() {
                 <>
                   <div className="divide-y divide-brand-border max-h-[320px] overflow-y-auto pr-1">
                     {cartItems.map(({ product, entry, subtotal }) => {
-                      const { availableLeft } = getBaseStockInfo(
-                        product.baseType
-                      );
                       return (
                         <div
                           key={product.id}

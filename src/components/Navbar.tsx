@@ -16,8 +16,8 @@ export function Navbar() {
               OPEN PRE ORDER
             </span>
             <span className="text-zinc-300">
-              Pengambilan {STORE_CONFIG.pickupDays[0]} | Stok Terbatas 25 Porsi
-              (15 Macmoy &amp; 10 Friesmoy) | WA {STORE_CONFIG.adminWhatsAppDisplay}
+              Pengambilan {STORE_CONFIG.pickupDays[0]} | Kuota Terbatas 25 Porsi
+              (Semua Menu) | WA {STORE_CONFIG.adminWhatsAppDisplay}
             </span>
           </p>
           <Link

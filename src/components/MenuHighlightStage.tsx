@@ -384,9 +384,7 @@ export function MenuHighlightStage({
                 style={{ color: theme.accentText }}
               >
                 {storeOpen
-                  ? `(Sisa stok ${
-                      activeProduct.baseType === "mac" ? "Macmoy" : "Friesmoy"
-                    }: ${activeProductRemaining}/${activeProductMax} porsi)`
+                  ? `(Sisa kuota PO: ${activeProductRemaining}/${activeProductMax} porsi)`
                   : "(Pre Order sedang ditutup)"}
               </span>
             </div>

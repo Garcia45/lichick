@@ -13,8 +13,8 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 import {
-  BASE_STOCK_GROUPS,
   DEFAULT_QUOTAS,
+  DEFAULT_TOTAL_QUOTA,
   ORDER_STATUS_META,
   PAYMENT_STATUS_META,
   STORE_CONFIG,
@@ -420,7 +420,14 @@ export function AdminDashboardClient() {
                 </div>
                 <div className="text-right font-bold">
                   <p>Total Order Aktif: {data.summary.active_orders}</p>
-                  <p>Total Bowl: {data.summary.total_portions_sold}</p>
+                  <p>
+                    Total Bowl: {data.summary.total_portions_sold} /{" "}
+                    {data.store_config?.quotas?.total ?? DEFAULT_TOTAL_QUOTA}
+                  </p>
+                  <p className="font-normal">
+                    Macmoy: {data.sold_by_base?.mac || 0} | Friesmoy:{" "}
+                    {data.sold_by_base?.fries || 0}
+                  </p>
                 </div>
               </div>
 
@@ -817,58 +824,55 @@ export function AdminDashboardClient() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {BASE_STOCK_GROUPS.map((group) => {
-                const sold = data?.sold_by_base?.[group.key] || 0;
-                const maxVal = quotasDraft[group.key] ?? group.defaultQuota;
-                const rem = Math.max(0, maxVal - sold);
-                return (
-                  <div
-                    key={group.key}
-                    className="p-3.5 rounded-xl bg-brand-paper border border-brand-border flex items-center justify-between gap-3"
-                  >
-                    <div className="text-xs">
-                      <span className="font-bold text-brand-dark block">
-                        Stok {group.label}
-                      </span>
-                      <span className="text-[11px] text-brand-muted block">
-                        {group.subtitle}
-                      </span>
-                      <span className="text-[11px] font-semibold text-brand-orange tabular-nums block mt-0.5">
-                        Terjual: {sold} | Sisa: {rem}
-                      </span>
-                    </div>
-                    <input
-                      type="number"
-                      min={0}
-                      max={500}
-                      value={maxVal}
-                      onChange={(e) =>
-                        setQuotasDraft((prev) => ({
-                          ...prev,
-                          [group.key]: Math.max(
-                            0,
-                            Math.min(500, Math.floor(Number(e.target.value) || 0))
-                          ),
-                        }))
-                      }
-                      className="w-20 h-9 px-2 rounded-lg border border-brand-border bg-white text-center text-xs font-bold shrink-0"
-                    />
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Pengaturan 1 Angka Stok Global Keseluruhan */}
+              <div className="p-4 rounded-xl bg-brand-paper border border-brand-border flex items-center justify-between gap-4">
+                <div className="text-xs space-y-0.5">
+                  <span className="font-bold text-sm text-brand-dark block">
+                    Total Kuota Pre Order (Semua Menu)
+                  </span>
+                  <span className="text-[11px] text-brand-muted block">
+                    Bebas campur Friesmoy &amp; Macmoy (Gerah / Original)
+                  </span>
+                  <span className="text-[11px] font-semibold text-brand-orange tabular-nums block pt-0.5">
+                    Terjual: {data?.total_sold || 0} | Sisa:{" "}
+                    {Math.max(
+                      0,
+                      (quotasDraft.total ?? DEFAULT_TOTAL_QUOTA) -
+                        (data?.total_sold || 0)
+                    )}{" "}
+                    porsi
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={500}
+                  value={quotasDraft.total ?? DEFAULT_TOTAL_QUOTA}
+                  onChange={(e) =>
+                    setQuotasDraft({
+                      total: Math.max(
+                        0,
+                        Math.min(500, Math.floor(Number(e.target.value) || 0))
+                      ),
+                    })
+                  }
+                  className="w-24 h-11 px-3 rounded-lg border border-brand-border bg-white text-center text-base font-display font-bold shrink-0"
+                />
+              </div>
 
-              <div className="p-3.5 rounded-xl bg-brand-surface border border-brand-border flex flex-col justify-center text-xs">
-                <span className="text-[11px] font-bold uppercase text-brand-muted">
-                  Total Stok Pre Order
+              {/* Rekap Bahan Dapur Otomatis (Macmoy vs Friesmoy) */}
+              <div className="p-4 rounded-xl bg-brand-surface border border-brand-border flex flex-col justify-center gap-1.5 text-xs">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-brand-deep">
+                  Rekap Persiapan Dapur ({STORE_CONFIG.pickupDays[0]})
                 </span>
-                <span className="font-display font-bold text-xl text-brand-dark tabular-nums">
-                  {(quotasDraft.mac ?? DEFAULT_QUOTAS.mac) +
-                    (quotasDraft.fries ?? DEFAULT_QUOTAS.fries)}{" "}
-                  Porsi
-                </span>
-                <span className="text-[11px] text-brand-muted tabular-nums">
-                  Pengambilan: {STORE_CONFIG.pickupDays[0]}
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-1 font-bold text-brand-dark tabular-nums text-sm">
+                  <span>Macmoy: {data?.sold_by_base?.mac || 0} bowl</span>
+                  <span>Friesmoy: {data?.sold_by_base?.fries || 0} bowl</span>
+                </div>
+                <span className="text-[11px] text-brand-muted">
+                  Otomatis terhitung dari pesanan aktif untuk patokan belanja
+                  bahan kentang &amp; makaroni.
                 </span>
               </div>
             </div>
@@ -918,7 +922,10 @@ export function AdminDashboardClient() {
               {(counts.belum_dibuat || 0) + (counts.sedang_dibuat || 0)} Order
             </span>
             <span className="text-[11px] text-brand-orange font-semibold tabular-nums block mt-1">
-              Total {data?.summary.total_portions_sold || 0} bowl terjual
+              Terjual {data?.total_sold || 0}/
+              {data?.store_config?.quotas?.total ?? DEFAULT_TOTAL_QUOTA} bowl
+              (Mac {data?.sold_by_base?.mac || 0} | Fries{" "}
+              {data?.sold_by_base?.fries || 0})
             </span>
           </div>
 
