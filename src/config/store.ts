@@ -5,7 +5,7 @@ export const STORE_CONFIG = {
   brandSub: "by LUCUIH",
   brandTagline: "OPEN PRE ORDER: Friesmoy & Macmoy",
   brandDescription:
-    "Potongan ayam crispy hangat khas LiChick dengan pilihan French Fries atau Mac & Cheese creamy, tersedia dalam versi Original gurih dan GERAH bersaus pedas mengkilap.",
+    "Potongan ayam crispy hangat khas LiChick dengan pilihan French Fries atau Mac & Cheese creamy, tersedia dalam versi Original gurih dan GERAH dengan saus Nashville pedas khas LUCUIH.",
   adminWhatsApp: process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || "6282190437013",
   adminWhatsAppDisplay: "0821-9043-7013",
   instagramHandle: "@lichik.id",
@@ -34,13 +34,17 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     edition: "GERAH",
     baseType: "fries",
     priceShort: "18K",
-    tagline: "French Fries w/ Crispy Chicken, Saus Gerah Pedas",
+    tagline: "French Fries w/ Crispy Chicken, Saus Nashville Pedas",
     description:
-      "Kentang goreng golden-crispy dipadu potongan ayam crispy renyah khas LiChick dengan siraman saus GERAH pedas-manis mengkilap.",
+      "Kentang goreng golden-crispy dipadu potongan ayam crispy renyah khas LiChick dengan siraman saus Nashville pedas khas LUCUIH.",
     price: 18000,
     defaultQuota: 10,
     badge: "Pedas Favorit",
-    variants: ["Saus Gerah Normal", "Extra Saus Gerah", "Saus Gerah Dipisah"],
+    variants: [
+      "Saus Nashville Normal",
+      "Extra Saus Nashville",
+      "Saus Nashville Dipisah",
+    ],
     imageUrl: "/images/friesmoy-gerah.png",
   },
   {
@@ -50,13 +54,17 @@ export const MENU_PRODUCTS: MenuProduct[] = [
     edition: "GERAH",
     baseType: "mac",
     priceShort: "20K",
-    tagline: "Mac & Cheese w/ Crispy Chicken, Saus Gerah Pedas",
+    tagline: "Mac & Cheese w/ Crispy Chicken, Saus Nashville Pedas",
     description:
-      "Makaroni creamy saus keju lumer berpadu potongan ayam crispy juicy dan siraman saus GERAH pedas menggoda.",
+      "Makaroni creamy saus keju lumer berpadu potongan ayam crispy juicy dan siraman saus Nashville pedas khas LUCUIH.",
     price: 20000,
     defaultQuota: 15,
     badge: "Signature Pedas",
-    variants: ["Saus Gerah Normal", "Extra Saus Gerah", "Saus Gerah Dipisah"],
+    variants: [
+      "Saus Nashville Normal",
+      "Extra Saus Nashville",
+      "Saus Nashville Dipisah",
+    ],
     imageUrl: "/images/macmoy-gerah.png",
   },
   {
